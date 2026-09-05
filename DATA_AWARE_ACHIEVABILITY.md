@@ -177,7 +177,91 @@ This is the actual answer to the algebra/geometry problem. The interface `(J*, {
 
 ---
 
-## 8. Computing everything
+## 8. Theorem 5 — the two dialects, and why one of them mostly fails
+
+The certificate is *any* function of `(c, D)`, so it has a second dialect the standalone document never considers: **extra mantissa bits on trusted labels**. The encoder knows `c` and `x_i`, so it can compute `f_c(x_i)` exactly; since the decoder already holds `y_i` to `±γ`, sending which `2^{-b}` sub-cell the true value lies in costs exactly `b` bits and replaces `γ` by `γ/2^b` on that row.
+
+The two dialects act on completely different parts of the object:
+
+| | mechanism | basis |
+|---|---|---|
+| **Parity bits** (RS on `J*`) | pins *coordinates* | coordinate-locked |
+| **Label bits** (refine `y_i`) | tightens *halfspaces* | any orientation |
+
+Refinement only ever shrinks `V⁺`, so dangerous supports leave and never enter — the split can be optimised greedily. Define the **silent core**
+
+```
+    V⁰ = { v ∈ V⁺ : Φ_D v = 0 }
+```
+
+and call a dangerous direction **audible** if `Φ_D v ≠ 0`, **silent** otherwise.
+
+> **Theorem 5.**
+> 1. *(Refinement floor.)* No amount of label refinement, on any subset of rows to any depth, removes a single element of `V⁰`. If `V⁰` contains a dangerous vector, parity bits are **mandatory**, and `L*_D(ε)` is bounded below by Theorem 4 applied to the silent core.
+> 2. *(Refinement rate.)* For an audible dangerous direction `v` with per-unit harm `p = ‖Σ^{1/2}v̂‖` and audibility `z = max_i |⟨σ(x_i), v̂⟩|`, refining the single row `argmax_i |⟨σ(x_i), v̂⟩|` by
+>    `b = ⌈log₂( 2γ·p / (√ε·z) )⌉` bits removes it. When label precision rather than the `ℓ_∞` cap is what bounds the direction this is exactly `b = ⌈log₂(A_S/√ε)⌉`.
+> 3. *(Parity rate.)* Hitting the same support by parity costs `⌈log₂(s·φ_j)⌉` bits for the cheapest `j ∈ S`, **independent of audibility**.
+> 4. *(Crossover.)* Parity's cost is flat in audibility; refinement's grows as `log₂(1/z)` and diverges at `z = 0`. So each dangerous direction has a single crossover, and the optimal certificate refines the audible directions and pays parity for the silent ones.
+
+*Proof of (1).* If `Φ_D v = 0` then `|⟨σ(x_i), v⟩| = 0 ≤ 2γ/2^b` for every row and every depth `b`. The constraint is satisfied vacuously, so `v` survives every refinement. ∎
+
+Measured on a trap family with tunable audibility `δ` (columns `a = u`, `b = u + δξ`, plus an unsampled rare mode making `λ=(1,−1)` harmful), `N=64`, `√ε = 0.1414`:
+
+```
+   delta   audibility   A_trap   refine bits   parity bits   cheaper
+  0.0000     0.00e+00   0.2683           inf             5   parity
+  0.0001     2.45e-04   0.2683             9             5   parity
+  0.0010     1.82e-03   0.2683             6             5   parity
+  0.0030     7.22e-03   0.2683             4             5   refine
+  0.0100     2.22e-02   0.2685             3             5   refine
+  0.0300     7.86e-02   0.2060             1             5   refine
+```
+
+A single clean crossover at `δ ≈ 2×10⁻³`, exactly where `log₂(1/δ)` meets the flat parity cost.
+
+### 8.1 The catch: danger and audibility are in tension
+
+That table makes refinement look like a real competitor. On the actual model it is not, and Theorem 2 explains why.
+
+A direction is dangerous only insofar as `vᵀ(Σ − Σ̂_D)v` is large — that is, only insofar as it acts on inputs the probes **under-sample**. In the limiting case, a mode not sampled at all, the direction is *exactly silent*, and refinement has nothing to sharpen. Danger pushes audibility toward zero.
+
+Classifying the `s=2` model's three minimal dangerous supports:
+
+```
+       support      A_S   audibility     kind   refine bits   parity bits
+         (11,)   0.1889     0.00e+00   SILENT           inf             3
+      (13, 14)   0.3771     0.00e+00   SILENT           inf             4
+  (15, 16, 17)   0.4629     0.00e+00   SILENT           inf             4
+
+  pure parity : J* = [11, 13, 16], L = 11 bits
+  pure refine : impossible
+  hybrid      : 0 refinement bits + 11 parity bits = 11 bits
+```
+
+**All three are exactly silent, and the hybrid degenerates to pure parity.** This is the honest outcome, and it is the interesting one:
+
+> **Label refinement — spending the certificate on *behaviour* — is structurally the wrong instrument for the dominant failure mode. It buys resolution on directions the probes already see, and danger lives precisely where they do not.**
+
+That is the opposite of what the sensitive-sample and fingerprinting literature implicitly assumes, and it sharpens the behaviour-versus-parameters accounting of `REVIEW.md` §5 from a rate comparison into a *structural* one: the two currencies are not merely differently priced, one of them cannot buy the good at all.
+
+### 8.2 The third resource, and why §13.2 is the sequel
+
+Refinement adds precision to existing rows. It cannot add rows. **A new probe that activates the unsampled mode converts a silent direction into an audible one** — and that is what the `N`-sweeps show, both invisible sets collapsing to `∅` once `N` passes `1/τ`. So the invisible set shrinks three ways, and they are strictly ordered in power:
+
+| resource | acts on | clears the silent core? |
+|---|---|---|
+| sharper labels (more bits per row) | existing rows | **no** |
+| more probes (new rows) | the row space itself | **yes** — if they hit the right mode |
+| parity bits | coordinates | **yes**, always, at cost per fragile coordinate |
+
+> **Rows beat precision; and when the right row does not exist, only parity works.**
+
+Which makes §13.2 the natural sequel rather than an aside: the defender's real lever is *which inputs to probe*, and the adversary picks its support after seeing that choice — the minimax §13.2 already formulates correctly. Theorem 5 says what is at stake in that game: every mode the probe design misses becomes a silent core that must be paid for in parity, at `⌈log₂(s·φ_j)⌉` bits per fragile coordinate.
+
+
+---
+
+## 9. Computing everything
 
 `A(D)` is NP-hard (sparse generalised eigenvalue), so a construction that needed it exactly would be vacuous. It does not:
 
@@ -189,7 +273,7 @@ This is the actual answer to the algebra/geometry problem. The interface `(J*, {
 
 ---
 
-## 9. Numerical validation
+## 10. Numerical validation
 
 **`s = 1`** — `h = 44` (32 common + 12 rare-mode coordinates, activation rates `0.5 → 1.2×10⁻⁴`, plus 6 near-duplicate pairs). Invisible set computed exactly by halfspace intersection over all `C(44,2)` supports.
 
@@ -219,9 +303,9 @@ The minimal dangerous supports recovered are **exactly** the three planted struc
 
 ---
 
-## 10. What remains
+## 11. What remains
 
-**Settled.** Theorems 1–4: exact characterisation, the decomposition (conceptual and computational), DARC, and a converse in matching quantities. The hitting-set formulation, the fragility index, and the orientation-is-broken-not-encoded mechanism. Computability via sound relaxations. Validated at `s = 1` and `s = 2`, the latter against planted rotated traps.
+**Settled.** Theorems 1–5: exact characterisation, the decomposition (conceptual and computational), DARC, a converse in matching quantities, and the two-dialect structure with its refinement floor. The hitting-set formulation, the fragility index, and the orientation-is-broken-not-encoded mechanism. Computability via sound relaxations. Validated at `s = 1` and `s = 2`, the latter against planted rotated traps.
 
 **Open.**
 - The alphabet gap when `φ < |J*|` — algebraic-geometry codes should shrink it.
@@ -229,4 +313,5 @@ The minimal dangerous supports recovered are **exactly** the three planted struc
 - Theorem 2's second inequality is loose by ~10² when crudely bounded (`‖v‖₂² ≤ 8sρ²`); the screen uses the sharper data-dependent form.
 - The `s = 2` transition is sharp rather than graded — an artefact of only three rare coordinates in that model, not a claim about real geometry.
 - **Drift.** Everything assumes unattacked coordinates are bit-exact. Under benign drift the RS layer fails at cell boundaries — the same brittleness `REVIEW.md` §3.4 flags in Theorem 8.1. Dithered or nested-lattice quantisation is the fix and is not written down.
-- The hybrid of §6 in the previous revision — certificates may also spend bits on extra mantissa bits of trusted labels, which reshape `V⁺` rotationally where parity bits cannot. Stated, not solved; it is the bridge to the behaviour-versus-parameters accounting in `REVIEW.md` §5.
+- **Probe design (§13.2).** Theorem 5 reduces the question to it: every input mode the probe set misses becomes a silent core payable only in parity. The minimax formulation is right; the constrained design problem is open.
+- **Joint optimisation** of the greedy hybrid split is done per-direction, not globally; a refined row cuts *all* directions at once, so the true optimum is a set-cover and should be cheaper than the per-direction bound.

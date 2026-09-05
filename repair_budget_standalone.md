@@ -1,6 +1,7 @@
 # The Repair Budget of a Tampered Model
 
-<!-- **A standalone results document.** Self-contained: all quantities are defined here. Supersedes the Section 8 draft. Surface B (ReLU bias tampering) is deliberately excluded and deferred. -->
+<!-- Standalone results document. Self-contained: all quantities are defined here.
+     §13.1 (data-aware achievability) is no longer open — it is §7–§11. -->
 
 ---
 
@@ -10,7 +11,7 @@ A model is deployed. An adversary changes a small number of its parameters. You 
 
 > **How many protected bits do you need to restore the model's function?**
 
-The answer turns out to be governed by a single scalar — the largest functional change an adversary can make while remaining inside the precision of your trusted labels — and that scalar is a measurable spectral property of the network's own feature geometry.
+The answer is governed by one geometric object — the set of parameter changes that are invisible at the precision of your trusted labels — and by two numbers read off it: its **radius**, which decides whether you can *detect* tampering, and its **chromatic number**, which decides what it costs to *repair* it.
 
 ---
 
@@ -18,17 +19,11 @@ The answer turns out to be governed by a single scalar — the largest functiona
 
 ### 2.1 Model
 
-Let $\mathcal X$ be the input space and $P$ the deployment distribution on it. Fix a **trusted feature map**
-
-$$\sigma : \mathcal X \to \mathbb R^{h},$$
-
-which may itself be an arbitrary deep network. The **mutable parameters** are a vector $c \in \Theta \subseteq \mathbb R^h$, and the model is
+Let $\mathcal X$ be the input space and $P$ the deployment distribution. Fix a **trusted feature map** $\sigma : \mathcal X \to \mathbb R^{h}$, which may itself be an arbitrary deep network. The **mutable parameters** are $c \in \Theta \subseteq [-B,B]^h$, and the model is
 
 $$f_c(x) \;=\; \langle c, \sigma(x)\rangle .$$
 
-This is exact, not a linearization. It covers the output layer of any network — including the LM head of a transformer, where $\sigma(x)$ is the final hidden state (§10).
-
-Assume $\mathbb E_{X\sim P}\|\sigma(X)\|_2^2 < \infty$.
+This is exact, not a linearization. It covers the output layer of any network, including the LM head of a transformer, where $\sigma(x)$ is the final hidden state (§14). Assume $\mathbb E_{X\sim P}\|\sigma(X)\|_2^2 < \infty$.
 
 ### 2.2 Threat model
 
@@ -38,41 +33,41 @@ $$\tilde c = c + e, \qquad e \in \mathcal T_{s,\rho} := \{e \in \mathbb R^h : \|
 
 The adversary is **defense-aware**: it knows $\sigma$, $P$, $\Theta$, the trusted set $D$, the encoder and decoder, and the stored certificate value. It chooses $e$ after all of these are fixed. It cannot modify $D$ or the certificate.
 
-> **Standing consequence (uniformity requirement).** Because the adversary reads $D$ before choosing the support of $e$, every guarantee in this document must hold **uniformly over all supports** $S \subseteq [h]$ with $|S| \le s$. A per-support guarantee is worthless here: the adversary simply picks the worst support. This is not a technicality — §6 shows it is precisely what determines the sample complexity.
+> **Standing consequence.** Because the adversary reads $D$ before choosing the support of $e$, every guarantee must hold **uniformly over all supports**. A per-support guarantee is worthless: the adversary picks the worst support.
 
-### 2.3 Trusted data, at finite precision
+### 2.3 The difference set
 
-Draw $x_1,\dots,x_N \overset{\text{iid}}{\sim} P$ and record
+The decoder never sees $e$; it sees $\tilde c$ and must distinguish candidates. Two candidates reachable to a common received model differ by an element of
 
-$$D = \big((x_i, y_i)\big)_{i=1}^N, \qquad |y_i - f_c(x_i)| \le \gamma .$$
+$$\boxed{\ \mathcal D_{s,\rho} \;:=\; \mathcal T_{s,\rho} - \mathcal T_{s,\rho}\ }$$
 
-$\gamma \ge 0$ is the **label precision**: the resolution at which the trusted outputs were recorded and stored. Storing a label to precision $\gamma$ over a range $R$ costs $\beta \approx \log_2(R/\gamma)$ bits.
+and this set — not $\mathcal T_{2s,2\rho}$ — is the operative one.
 
-$\gamma$ is not a nuisance parameter. §5 shows it is the reason the problem is non-trivial at all.
+> **Lemma 2.1.** $\mathcal T_{2s,\rho} \subsetneq \mathcal D_{s,\rho} \subsetneq \mathcal T_{2s,2\rho}$.
+>
+> *Proof.* First inclusion: split the support of $v\in\mathcal T_{2s,\rho}$ into $S_1,S_2$ of size $\le s$ and take $e' = v|_{S_1}$, $e'' = -v|_{S_2}$. Second: a difference has at most $2s$ nonzeros, each of magnitude at most $2\rho$. Strictness of the second: the vector equal to $2\rho$ on $2s$ coordinates lies in $\mathcal T_{2s,2\rho}$, but writing it as $e'-e''$ forces $e'_j=\rho,\ e''_j=-\rho$ on all $2s$ coordinates, so $\|e'\|_0 = 2s > s$. $\square$
 
-Define the **trusted feature matrix**
+Conflating $\mathcal D_{s,\rho}$ with $\mathcal T_{2s,2\rho}$ overstates the ambiguity; conflating it with $\mathcal T_{s,\rho}$ understates it. Earlier drafts of this document used $\mathcal T_{s,\rho}$ throughout, which is why the positive direction of the old zero-bit criterion did not follow. It is fixed in §5.
 
-$$\Phi_D = \begin{bmatrix} \sigma(x_1)^\top \\ \vdots \\ \sigma(x_N)^\top\end{bmatrix} \in \mathbb R^{N\times h},
-\qquad
-\widehat\Sigma_D = \tfrac1N \Phi_D^\top\Phi_D .$$
+### 2.4 Trusted data, at finite precision
 
-### 2.4 Functional distance
+Draw $x_1,\dots,x_N \overset{\text{iid}}{\sim} P$ and record $D = ((x_i,y_i))_{i=1}^N$ with $|y_i - f_c(x_i)| \le \gamma$. The **label precision** $\gamma \ge 0$ is the resolution at which the trusted outputs were recorded. It is not a nuisance parameter: §6 shows it is one of exactly two reasons the problem is non-trivial.
 
-$$\Sigma \;=\; \mathbb E_{X\sim P}\big[\sigma(X)\sigma(X)^\top\big] \in \mathbb R^{h\times h}$$
+Write $\Phi_D \in \mathbb R^{N\times h}$ for the **trusted feature matrix** with rows $\sigma(x_i)^\top$, and $\widehat\Sigma_D = \tfrac1N \Phi_D^\top\Phi_D$. Let
 
-is the **population feature second-moment matrix**. For $c, c' \in \Theta$,
+$$\Theta_D \;=\; \{c'\in\Theta : |\langle c',\sigma(x_i)\rangle - y_i| \le \gamma \ \ \forall i\}$$
+
+be the set of parameters **consistent with $D$**.
+
+### 2.5 Functional distance
+
+$\Sigma = \mathbb E_{X\sim P}[\sigma(X)\sigma(X)^\top]$ is the population feature second-moment matrix, and
 
 $$d_P^2(c,c') \;=\; \mathbb E_{X\sim P}\big[(f_c(X)-f_{c'}(X))^2\big] \;=\; (c-c')^\top \Sigma (c-c') .$$
 
-Repair to tolerance $\varepsilon$ means $d_P^2(\hat c, c) \le \varepsilon$. Write $r = \sqrt\varepsilon$.
+Repair to tolerance $\varepsilon$ means $d_P^2(\hat c, c) \le \varepsilon$.
 
-For $k \le h$ define the restricted extreme eigenvalues
-
-$$\lambda^{(k)}_{\min} = \min_{\|v\|_0\le k,\, v\ne 0} \frac{v^\top\Sigma v}{\|v\|_2^2},
-\qquad
-\lambda^{(k)}_{\max} = \max_{\|v\|_0\le k,\, v\ne 0} \frac{v^\top\Sigma v}{\|v\|_2^2}.$$
-
-### 2.5 Certificate
+### 2.6 Certificate
 
 An $L$-bit certificate scheme is a pair of deterministic maps
 
@@ -80,331 +75,408 @@ $$C : \Theta \times (\mathcal X\times\mathbb R)^N \to \{0,1\}^L,
 \qquad
 R : (\mathcal X\times\mathbb R)^N \times \widetilde\Theta \times \{0,1\}^L \to \Theta .$$
 
-The certificate $\kappa = C(c, D)$ is computed **before** tampering. After tampering the decoder sees $(D, \tilde c, \kappa)$ and outputs $\hat c$. Define
+The certificate $\kappa = C(c,D)$ is computed **before** tampering. After tampering the decoder sees $(D,\tilde c,\kappa)$ and outputs $\hat c$. Define
 
-$$L^\star_D(\varepsilon) \;=\; \min\Big\{L : \exists (C,R) \text{ with } \sup_{e\in\mathcal T_{s,\rho}} d_P^2\big(R(D,c+e,C(c,D)),\, c\big) \le \varepsilon \ \ \forall c \text{ consistent with } D\Big\}.$$
+$$L^\star_D(\varepsilon) \;=\; \min\Big\{L : \exists (C,R) \text{ with } \sup_{e\in\mathcal T_{s,\rho}} d_P^2\big(R(D,c+e,C(c,D)),\, c\big) \le \varepsilon \ \ \forall c \in \Theta_D\Big\}.$$
 
-Only the certificate is charged. The trusted set is treated as given — see §9 for why.
+Only the certificate is charged; §17 records why this accounting is the document's weakest point.
 
 ---
 
 ## 3. The reduction
 
-Everything follows from one line.
+Let $\hat y_i = f_{\tilde c}(x_i)$ and $r_i = \hat y_i - y_i$. Then $r_i = \langle c+e, \sigma(x_i)\rangle - y_i$, so
 
-Let $\hat y_i = f_{\tilde c}(x_i)$ be the outputs the decoder can compute from the received model, and let $r_i = \hat y_i - y_i$ be the **residual**. Then
-
-$$r_i = \langle \tilde c, \sigma(x_i)\rangle - y_i = \langle c + e, \sigma(x_i)\rangle - y_i,$$
-
-so, up to the label precision,
-
-$$\boxed{\;r \;=\; \Phi_D\, e \;+\; \xi, \qquad \|\xi\|_\infty \le \gamma, \qquad \|e\|_0 \le s,\ \|e\|_\infty \le \rho. \;}$$
+$$\boxed{\;r \;=\; \Phi_D\, e \;+\; \xi, \qquad \|\xi\|_\infty \le \gamma, \qquad e \in \mathcal T_{s,\rho}. \;}$$
 
 > **Repairing a sparsely tampered output layer is sparse recovery whose sensing matrix is the network's own feature matrix on the trusted inputs, observed at the precision of the trusted labels.**
 
-No assumptions were used: $\sigma$ arbitrary, $P$ arbitrary, depth arbitrary. Two candidates $c', c''$ are indistinguishable to the decoder exactly when $c'' - c'$ is (i) sparse enough to be reachable from a common received model, and (ii) quiet enough on $\Phi_D$ to hide inside the label precision.
+No assumptions were used: $\sigma$ arbitrary, $P$ arbitrary, depth arbitrary.
 
-**Remark (what is and isn't new here).** The identity $r = \Phi e$ is the classical error-correction-as-sparse-recovery formulation (Candès–Tao). The content of this document is not the identity; it is (a) the object $\Phi_D$ being the network's feature matrix and therefore *measurable*, (b) the pre-commitment quantifier in §2.5, which makes the converse non-trivial, and (c) the bit accounting. See §11.
+**What is and isn't new.** The identity $r = \Phi e$ is the classical error-correction-as-sparse-recovery formulation (Candès–Tao). The content here is (a) $\Phi_D$ being the network's own feature matrix and therefore *measurable*, (b) the pre-commitment quantifier of §2.6, and (c) the bit accounting of §7–§11.
 
 ---
 
-## 4. The central quantity: residual ambiguity
-
-Two candidates that could both have produced $D$ and could both have been tampered into the *same* received model must be separated by the certificate — unless they are functionally close.
-
-Since candidates $c$ and $c + v$ both reach the common received model $\tilde c = c$ (the first by $e = 0$, the second by $e = -v$, which is admissible whenever $\|v\|_0 \le s$ and $\|v\|_\infty\le\rho$), and both agree with $D$ whenever $\|\Phi_D v\|_\infty \le 2\gamma$, define:
+## 4. The invisible set
 
 > ### Definition 4.1 (invisible set)
-> $$\mathcal N(D;\,s,\rho,\gamma) \;=\; \big\{\, v \in \mathbb R^h \;:\; \|v\|_0 \le s,\ \ \|v\|_\infty \le \rho,\ \ \|\Phi_D v\|_\infty \le 2\gamma \,\big\}.$$
+> $$\mathcal N(D) \;=\; \big\{\, v \in \mathcal D_{s,\rho} \;:\; \|\Phi_D v\|_\infty \le 2\gamma \,\big\},
+> \qquad
+> \mathcal N^-(D) \;=\; \big\{\, v \in \mathcal T_{s,\rho} \;:\; \|\Phi_D v\|_\infty \le 2\gamma \,\big\}.$$
 
-> ### Definition 4.2 (residual ambiguity)
-> $$\boxed{\;\mathcal A(D) \;=\; \sup_{v \,\in\, \mathcal N(D;\,s,\rho,\gamma)} \big\| \Sigma^{1/2} v \big\|_2 \;}$$
+$\mathcal N^-\subseteq\mathcal N$. The first is what an adversary can realize as a single attack; the second is what the decoder cannot rule out.
 
-In words: **the largest functional change an adversary can make while staying inside the precision of your trusted labels on every trusted sample.**
+> ### Definition 4.2 (residual ambiguity, dangerous vectors)
+> $$\mathcal A(D) \;=\; \sup_{v \in \mathcal N(D)} \big\| \Sigma^{1/2} v \big\|_2 ,$$
+> and $v$ is **dangerous at level $\theta$** if $v\in\mathcal N(D)$ and $\|\Sigma^{1/2}v\|_2 > \theta$.
 
-$\mathcal A(D)$ is one scalar. It is a sparse generalized eigenvalue problem with an $\ell_\infty$ constraint — NP-hard exactly, but computable by standard convex relaxation or greedy support search, and its maximizer *is* an eval-invisible attack (§12, E5).
+In words: $\mathcal A(D)$ is **the largest functional change an adversary can make while staying inside the precision of your trusted labels on every trusted sample.** It is a sparse generalized eigenvalue problem with an $\ell_\infty$ constraint — NP-hard exactly, but §12 shows only *sound upper bounds* are ever needed, and gives cheap ones.
 
-Everything below is read off $\mathcal A(D)$ and off the polytope $\mathcal N(D)$ underneath it.
+Note that if $c'\in\Theta_D$ and $c''\in\Theta_D$ then $\|\Phi_D(c''-c')\|_\infty \le 2\gamma$ automatically; so on $\Theta_D$ the invisible set *is* the set of differences between indistinguishable candidates.
 
 ---
 
-## 5. R2 — Why the hard kernel is the wrong object
+## 5. Detection: the radius
 
-### 5.1 The genericity collapse
-
-Suppose $\gamma = 0$ and the features are continuous. Fix a support $S$, $|S| \le 2s$. Then $\Phi_{D,S} \in \mathbb R^{N\times 2s}$, and for $N \ge 2s$ the rows are in general position, so $\ker \Phi_{D,S} = \{0\}$ almost surely. There are only $\binom{h}{2s}$ supports, and a finite union of null sets is null. Hence:
-
-> ### Proposition 5.1 (genericity)
-> If $\gamma = 0$, $\Sigma \succ 0$ on every $2s$-sparse support, and the feature distribution is absolutely continuous on each such support, then for $N \ge 2s$,
-> $$\Pr\big[\, \ker\Phi_{D,S} = \{0\} \ \ \text{for every } S \text{ with } |S|\le 2s \,\big] = 1,$$
-> and consequently $L^\star_D(\varepsilon) = 0$ for every $\varepsilon \ge 0$.
-
-**This is a one-line argument and it is devastating to the exact-arithmetic formulation.** It says $2s$ samples always suffice and no certificate is ever needed. Any theorem of the form "$N \gtrsim \tau^{-1} s\log(h/s)$ suffices to make $\ker\Phi_{D,S}$ trivial" is therefore proving something *strictly weaker* than Proposition 5.1, and is loose by a $\log(h/s)$ factor precisely in the regime it was meant to govern. The union bound over supports is doing no work: each event already has probability one.
-
-The exact-kernel machinery only earns its keep when the features are **degenerate** — when exact zeros or exact linear dependencies occur with positive probability. That happens for one-hot or isolated-region feature maps and for dead ReLUs. It does not happen for the feature maps of real trained networks.
-
-### 5.2 The fix: precision is what makes the null space real
-
-The escape is not numerical tolerance. It is physical: **your trusted labels have finite precision.** With $\gamma > 0$, the invisible set $\mathcal N(D)$ is a symmetric convex body of positive volume, and Proposition 5.1 does not apply. The relevant object is not the *rank* of $\Phi_{D,S}$ but its *spectrum*.
-
-> ### Proposition 5.2 (shape of the invisible set)
-> Fix $S$ with $|S| \le s$ and let $\sigma_1 \ge \cdots \ge \sigma_{|S|} \ge 0$ be the singular values of $\Phi_{D,S}$. Then $\mathcal N(D)$ restricted to $S$ contains the ellipsoid with semi-axes
-> $$a_i \;=\; \min\!\Big\{\rho,\ \frac{2\gamma}{\sigma_i}\Big\}, \qquad i = 1,\dots,|S|.$$
+> ### Theorem 5.1 (zero certificate bits)
+> $$\mathcal A(D) \le \sqrt\varepsilon \quad\Longrightarrow\quad L^\star_D(\varepsilon) = 0,$$
+> $$\sup_{v\in\mathcal N^-(D)}\|\Sigma^{1/2}v\|_2 > 2\sqrt\varepsilon \quad\Longrightarrow\quad L^\star_D(\varepsilon) \ge 1 .$$
 >
-> *Proof.* $\|u\|_\infty \le \|u\|_2$, so $\|\Phi_{D,S}v\|_2 \le 2\gamma$ implies $\|\Phi_{D,S}v\|_\infty \le 2\gamma$; the set $\{v : \|\Phi_{D,S}v\|_2\le 2\gamma\}$ is the ellipsoid with semi-axes $2\gamma/\sigma_i$ in the right singular basis. Intersecting with $\|v\|_\infty\le\rho$ gives the cap. $\square$
+> *Proof.* ($\Rightarrow$) Given $(D,\tilde c)$ the decoder's candidate set is $\mathcal C(\tilde c) = \{c'\in\Theta_D : \tilde c - c' \in \mathcal T_{s,\rho}\}$. For $c',c''\in\mathcal C(\tilde c)$ we have $c''-c' = (\tilde c - c') - (\tilde c - c'') \in \mathcal D_{s,\rho}$ and $\|\Phi_D(c''-c')\|_\infty\le2\gamma$, so $c''-c'\in\mathcal N(D)$ and $d_P(c',c'')\le\mathcal A(D)$. Returning any candidate gives error at most $\mathcal A(D)$. ($\Leftarrow$) Take $v\in\mathcal N^-$ with $\|\Sigma^{1/2}v\|_2>2\sqrt\varepsilon$. Both $c$ and $c+v$ lie in $\Theta_D$ and both reach the common received model $\tilde c = c$ — the first by $e=0$, the second by $e=-v\in\mathcal T_{s,\rho}$. A zero-bit decoder is a single function of $(D,\tilde c)$ and cannot be within $\sqrt\varepsilon$ of both. $\square$
 
-So a direction is dangerous when its singular value is **small relative to the label precision**, not when it is zero. Directions with $\sigma_i \ll \gamma/\rho$ are fully free; directions with $\sigma_i \gg \gamma/\rho$ are pinned. The transition is smooth, and the whole problem lives in the band between.
+The gap between $\sqrt\varepsilon$ and $2\sqrt\varepsilon$ is the usual radius-versus-diameter slack. **It is not free** — §11 records what it costs in certificate length — but it is not removable by this argument.
 
-### 5.3 Effective invisible dimension
+**Detection.** Deciding whether $d_P(\tilde c,c)>\varepsilon$ is possible at zero stored cost exactly when $\mathcal A(D)$ is small. Detection is governed by the *radius* of the invisible set. Repair, as §7 shows, is governed by a different functional of the same object.
 
-> ### Definition 5.3
-> $$d^\star(D;\eta) \;=\; \max_{|S|\le s}\ \#\Big\{ i : \sigma_i(\Phi_{D,S}) \le \eta \Big\}.$$
+---
 
-As $\eta \downarrow 0$ this recovers $\max_S \dim\ker\Phi_{D,S}$, which Proposition 5.1 says is $0$. For $\eta > 0$ it is the number of nearly-silent restricted directions, and it is what the certificate must pay for. The scale that matters is $\eta \asymp \gamma/\rho$.
+## 6. Where ambiguity comes from
 
-### 5.4 Zero-bit criterion
+The following replaces the small-ball machinery of earlier drafts. It needs **no assumption at all**.
 
-> ### Theorem 5.4 (zero certificate bits)
-> $$\mathcal A(D) \;\le\; \tfrac12\sqrt\varepsilon \quad\Longrightarrow\quad L^\star_D(\varepsilon) = 0,$$
-> $$\mathcal A(D) \;>\; 2\sqrt\varepsilon \quad\Longrightarrow\quad L^\star_D(\varepsilon) \ge 1 .$$
+> ### Theorem 6.1 (ambiguity decomposition)
+> For every $D$,
+> $$\boxed{\ \mathcal A(D)^2 \;\le\; 4\gamma^2 \;+\; \sup_{v\in\mathcal N(D)} v^\top\big(\Sigma - \widehat\Sigma_D\big)v\ }$$
 >
-> *Proof.* ($\Rightarrow$) Every candidate consistent with $D$ and reachable to the observed $\tilde c$ lies within $\Sigma^{1/2}$-distance $\mathcal A(D)$ of the least-squares candidate; taking that candidate as the output gives error at most $\mathcal A(D) \le \tfrac12\sqrt{\varepsilon}$, hence $d_P^2 \le \varepsilon$. ($\Leftarrow$) If $\mathcal A(D) > 2\sqrt\varepsilon$ there is $v \in \mathcal N(D)$ with $\|\Sigma^{1/2}v\|_2 > 2\sqrt\varepsilon$. The candidates $c$ and $c+v$ both agree with $D$ to precision $\gamma$, both reach the common received model $\tilde c = c$, and are separated by $d_P > 2\sqrt\varepsilon$. A zero-bit decoder is a single function of $(D,\tilde c)$ and cannot be within $\sqrt\varepsilon$ of both. $\square$
+> *Proof.* $v^\top\Sigma v = v^\top\widehat\Sigma_D v + v^\top(\Sigma-\widehat\Sigma_D)v$, and $v^\top\widehat\Sigma_D v = \tfrac1N\|\Phi_D v\|_2^2 \le \|\Phi_D v\|_\infty^2 \le 4\gamma^2$. $\square$
 
-The factor-of-4 gap between the two conditions is the usual radius-versus-diameter slack and is not worth removing.
+> **A sparse change hides from your trusted set for exactly two reasons: your labels are too coarse to see it, or your probes have not visited the inputs on which it acts. Nothing else contributes.**
+
+Consequences:
+
+- Sample complexity becomes **restricted covariance estimation** — a standard problem with known rates under stated tail conditions — rather than an assumption about anti-concentration constants nobody can report. A restricted small-ball condition still yields $N \asymp \tau^{-2}s\log(eh/s)$ by Mendelson's method; Theorem 6.1 explains what $\tau$ *is*: the rarity of the input mode on which a harmful direction acts.
+- Both terms are **measurable** on a real network.
+- It is also a **computational screen** (§12).
+
+**Genericity, and why it is not the point.** If $\gamma = 0$ and the feature distribution is absolutely continuous on every $2s$-sparse support, then for $N\ge 2s$ the restricted kernels are trivial almost surely and $L^\star_D(\varepsilon)=0$ for all $\varepsilon$. This is a one-line argument and it is fatal to any exact-arithmetic formulation of the problem. It is also inapplicable: real feature maps carry exact and near-exact linear relations among columns, and §10 exhibits a mechanism — a relation that holds on every sampled input and breaks only on a rare one — by which the restricted kernel is nontrivial *and* functionally harmful. The relevant object is never the rank of $\Phi_{D,S}$; it is its spectrum against $\gamma$, which is what Theorem 6.1 measures.
 
 ---
 
-## 6. Sample complexity, and where the logarithm comes from
+## 7. Repair: the chromatic number
 
-Proposition 5.1 says invertibility is free. Conditioning is not. Because the adversary picks the support after reading $D$ (§2.2), we need a bound on $\mathcal A(D)$ that holds **simultaneously for all supports**, and that is where the sample complexity lives.
+> ### Definition 7.1
+> $G_D(t)$ is the graph on $\Theta_D$ with $c' \sim c''$ iff $c''-c' \in \mathcal N(D)$ and $d_P(c',c'')>t$. Adjacency depends only on the difference.
 
-> ### Assumption SB($\kappa,\tau,k$) — restricted small ball
-> For every $v$ with $\|v\|_0\le k$ and $v^\top\Sigma v>0$,
-> $$\Pr_{X\sim P}\Big[\,\big|\langle \sigma(X), v\rangle\big| \;\ge\; \kappa\,\big\|\Sigma^{1/2}v\big\|_2 \,\Big] \;\ge\; \tau .$$
-
-This says: a functionally harmful sparse direction is not merely nonzero on the data — it is *loud* on a constant fraction of it. Both constants are measurable.
-
-> ### Theorem 6.1 (uniform ambiguity bound)
-> Under SB($\kappa,\tau,s$), there is a universal $C$ such that if
-> $$N \;\ge\; \frac{C}{\tau^{2}}\Big( s\log\frac{e h}{s} \;+\; \log\frac1\delta \Big),$$
-> then with probability at least $1-\delta$, simultaneously for every support of size $\le s$,
-> $$\boxed{\ \mathcal A(D) \;\le\; \frac{2\gamma}{\kappa}\ }$$
+> ### Theorem 7.2 (characterization)
+> $$\big\lceil \log_2 \chi\big(G_D(2\sqrt\varepsilon)\big)\big\rceil \;\le\; L^\star_D(\varepsilon)
+> \qquad\text{and}\qquad
+> L^\star_D(4\varepsilon) \;\le\; \big\lceil \log_2 \chi\big(G_D(2\sqrt\varepsilon)\big)\big\rceil .$$
 >
-> *Proof sketch.* Apply Mendelson's small-ball method to the class $T = \{v : \|v\|_0\le s,\ \|\Sigma^{1/2}v\|_2 = 1\}$, whose Gaussian width satisfies $w(T) \asymp \sqrt{s\log(eh/s)}$. With the stated $N$, w.p. $1-\delta$, uniformly over $T$ at least a $\tau/2$ fraction of samples satisfy $|\langle\sigma(x_i),v\rangle| \ge \kappa$. In particular at least one does. For $v \in \mathcal N(D)$ we have $\|\Phi_Dv\|_\infty \le 2\gamma$, so $\kappa\|\Sigma^{1/2}v\|_2 \le 2\gamma$. $\square$
->
-> (The exact power of $\tau$ depends on which form of the small-ball inequality is invoked; $\tau^{-2}$ is the conservative statement.)
+> *Proof.* (Left) Let $(C,R)$ repair to $\varepsilon$ and set $\kappa = C(\cdot,D)$. If $\kappa(c')=\kappa(c'')$ on an edge, the decoder sees identical $(D,\tilde c,\kappa)$ in both worlds — $\tilde c$ exists because $c''-c'\in\mathcal D_{s,\rho}$ — and must be within $\sqrt\varepsilon$ of both, so $d_P(c',c'')\le2\sqrt\varepsilon$, contradicting the edge. Hence $\kappa$ is a proper colouring. (Right) Given a proper colouring, let the decoder return any $c'\in\mathcal C(\tilde c)$ carrying the received colour; the truth is such a candidate. Two same-coloured members of $\mathcal C(\tilde c)$ differ by an element of $\mathcal N(D)$ and are non-adjacent, so $d_P \le 2\sqrt\varepsilon$. $\square$
 
-> ### Corollary 6.2 (zero bits from data alone)
-> Under the hypotheses of Theorem 6.1, if the trusted labels are recorded at precision
-> $$\gamma \;\le\; \tfrac14\,\kappa\,\sqrt\varepsilon,$$
-> then $L^\star_D(\varepsilon) = 0$ with probability at least $1-\delta$.
+This is Witsenhausen's zero-error-source-coding-with-side-information framework. The two bounds differ by the same radius-versus-diameter factor as Theorem 5.1; **the characterization is a sandwich, not an equality**, and closing it is not attempted here.
 
-### 6.3 What the logarithm is buying
+The value is that it collapses the theory. Writing $\omega$ for the clique number and $\Delta$ for the maximum degree:
 
-This resolves the tension with Proposition 5.1 cleanly:
-
-| Guarantee | Samples | What it is worth |
-|---|---|---|
-| $\ker\Phi_{D,S}=\{0\}$ for all $S$ | $N \ge 2s$, a.s. | Nothing. Fails the moment $\gamma>0$. |
-| $\mathcal A(D)\le 2\gamma/\kappa$, uniformly over all $S$ | $N \asymp \tau^{-2}\,s\log(h/s)$ | Everything. Survives an adversary who reads $D$. |
-
-> **The $\log(h/s)$ factor is not slack in the proof. It is the price of a guarantee that is uniform over the $\binom{h}{s}$ supports the adversary may choose from — i.e. it is the adaptive adversary's price.** A per-support guarantee costs $O(s)$ samples and is destroyed by an adversary who picks the worst support; a uniform guarantee costs $O(s\log(h/s))$ and cannot be. This matches the known $\Omega(s\log(h/s))$ lower bound for any matrix satisfying a restricted isometry property, so the rate is not improvable in general.
-
----
-
-## 7. Converse: how many bits when data is not enough
-
-> ### Theorem 7.1 (bit lower bound)
-> Fix $D$ and a support $S$, $|S| \le s$. Let $\sigma_1\ge\cdots\ge\sigma_{|S|}$ be the singular values of $\Phi_{D,S}$, and set $a_i = \min\{\rho,\ 2\gamma/\sigma_i\}$. Then
-> $$\boxed{\;L_D^\star(\varepsilon) \;\ge\; \sum_{i=1}^{|S|}\left[\log_2 \frac{a_i\sqrt{\lambda^{(s)}_{\min}}}{2\sqrt\varepsilon}\right]_+ \;}$$
-> where $[z]_+ = \max\{z,0\}$.
->
-> *Proof.* By Proposition 5.2, $\mathcal N(D)$ restricted to $S$ contains the ellipsoid $E$ with semi-axes $a_i$. Every $v\in E$ gives a candidate $c+v$ that (i) agrees with $D$ to precision $\gamma$, (ii) is reachable to the common received model $\tilde c=c$ via the admissible attack $e=-v$, since $\|v\|_0\le s$ and $\|v\|_\infty\le\rho$. For $v,v'\in E$, $d_P(c+v,c+v') \ge \sqrt{\lambda^{(s)}_{\min}}\,\|v-v'\|_2$. Hence a Euclidean $\big(2\sqrt\varepsilon/\sqrt{\lambda^{(s)}_{\min}}\big)$-separated packing of $E$ is a $2\sqrt\varepsilon$-separated packing in $d_P$, and such a packing of $E$ has size at least $\prod_i \max\{1,\ a_i\sqrt{\lambda^{(s)}_{\min}}/(2\sqrt\varepsilon)\}$. Two packing members sharing a certificate message would force the decoder — which sees the same $(D,\tilde c,\kappa)$ in both cases — to be within $\sqrt\varepsilon$ of both, contradicting the separation. Hence $2^L$ is at least the packing size. $\square$
-
-Maximizing over $S$ gives the strongest form. Written per-direction, the bound reads:
-
-> ### Corollary 7.2 (the exchange rate)
-> $$L^\star_D(\varepsilon) \;\gtrsim\; \sum_{i}\Big[\log_2\frac{\gamma}{\sigma_i\sqrt{\varepsilon/\lambda^{(s)}_{\min}}}\Big]_+ .$$
-> **You pay one protected bit for every factor of two by which a restricted singular direction is quieter than your label precision.** Directions with $\sigma_i$ large contribute nothing; directions with $\sigma_i$ below the precision floor contribute their full dynamic range $\log_2(\rho\sqrt{\lambda_{\min}}/\sqrt\varepsilon)$ each.
-
-Note the two limits are consistent: as $\gamma\to0$ with $N \ge 2s$, all $\sigma_i>0$ and the bound vanishes, recovering Proposition 5.1; as $\sigma_i \to 0$ the $i$-th term saturates at the cap $a_i=\rho$.
-
----
-
-## 8. R1 — Achievability: the data-free ceiling
-
-The converse is data-dependent. The following upper bound is not: it holds for every $D$, including $D=\varnothing$. It is therefore a *ceiling* on the repair budget — you never need more than this, no matter how bad your trusted set is.
-
-### 8.1 Construction
-
-Assume $\Theta \subseteq [-B,B]^h$.
-
-**Step 1 — quantizer step.** Set
-$$\Delta \;=\; 2\sqrt{\frac{\varepsilon}{s\,\lambda^{(s)}_{\max}}}.$$
-
-**Step 2 — modular symbols.** Let $k_j(\theta) = \lfloor (\theta_j + B)/\Delta\rfloor$ be the cell index of coordinate $j$, and let
-$$M \;=\; \Big\lceil \tfrac{2\rho}{\Delta}\Big\rceil + 3 .$$
-Define the symbol $y_j = k_j(c) \bmod M$. Working modulo $M$ rather than storing the full cell index is what makes $\rho$, rather than $B$, appear in the final rate.
-
-**Step 3 — code.** Let $Q$ be a prime power with $Q \ge \max\{M,\ h\}$. Regard $y = (y_1,\dots,y_h) \in \mathbb F_Q^{h}$ as a word and store the $2s$ Reed–Solomon parity symbols of $y$:
-$$\boxed{\;\kappa \;=\; \mathrm{RS}_{2s}(y), \qquad L \;=\; 2s\lceil \log_2 Q\rceil. \;}$$
-
-### 8.2 Decoding
-
-1. Form $\tilde y_j = k_j(\tilde c) \bmod M$.
-2. On every unattacked coordinate $\tilde c_j = c_j$ exactly, so $\tilde y_j = y_j$. Hence $d_H(\tilde y, y) \le s$.
-3. Run Berlekamp–Massey with the stored parity: $2s$ parity symbols correct $s$ symbol errors. This returns both $y$ and the error locator set $\hat S = \mathrm{supp}(e)$.
-4. Set $\hat c_j = \tilde c_j$ for $j \notin \hat S$ — exact.
-5. For $j \in \hat S$: lift the residue. We know $k_j(c) \equiv y_j \ (\mathrm{mod}\ M)$ and $|c_j - \tilde c_j|\le\rho$, so $|k_j(c) - k_j(\tilde c)| \le \rho/\Delta + 1$; since $M > 2\rho/\Delta + 2$ the residue determines $k_j(c)$ uniquely. Set $\hat c_j$ to that cell's centre.
-
-### 8.3 Guarantee
-
-> ### Theorem 8.1 (data-free ceiling)
-> For every trusted set $D$ (including the empty one),
-> $$\boxed{\;L^\star_D(\varepsilon) \;\le\; 2s\left\lceil \log_2 \max\left\{ \Big\lceil \rho\sqrt{\tfrac{s\,\lambda^{(s)}_{\max}}{\varepsilon}}\Big\rceil + 3,\ \ h \right\}\right\rceil \;=\; O\!\left(s\log h \;+\; s\log\Big(1+\rho\sqrt{\tfrac{s\lambda^{(s)}_{\max}}{\varepsilon}}\Big)\right).}$$
-> The encoder and decoder run in time $\tilde O(h)$.
->
-> *Proof.* Steps 1–5 above are exact except on $\hat S$, where $|\hat c_j - c_j| \le \Delta/2$. Since $|\hat S|\le s$,
-> $$\|\hat c - c\|_2 \le \tfrac{\sqrt s\,\Delta}{2}, \qquad
-> d_P(\hat c,c) \le \sqrt{\lambda^{(s)}_{\max}}\,\|\hat c-c\|_2 \le \sqrt{\lambda^{(s)}_{\max}}\cdot \tfrac{\sqrt s}{2}\cdot 2\sqrt{\tfrac{\varepsilon}{s\lambda^{(s)}_{\max}}} = \sqrt\varepsilon .$$
-> The certificate depends only on $c$, so it is a valid pre-attack commitment, and the decoder never consults $D$. Correctness therefore holds against every $e \in \mathcal T_{s,\rho}$. $\square$
-
-### 8.4 Reading the two bounds together
-
-Converse (Cor. 7.2) and ceiling (Thm 8.1) have the same shape:
-
-$$\underbrace{s\log h}_{\text{where the tampering is}} \;+\; \underbrace{s\log\big(\rho\sqrt{\lambda/\varepsilon}\big)}_{\text{how large it is}} .$$
-
-The ceiling ignores $D$ entirely; the converse shrinks as $\Phi_D$'s restricted spectrum rises above the precision floor. Closing the gap between them — a *data-aware* achievability that shortens the code using $\mathrm{row}(\Phi_D)$ — is the main open problem (§13.1).
-
----
-
-## 9. R4 — The ladder: detect, localize, repair
-
-Three tasks, one object, and they are not equally expensive. Stated carefully, because the distinctions matter.
-
-> ### Definition 9.1
-> - **Bit-exact integrity:** decide whether $\tilde c = c$ as bit strings.
-> - **Functional detection:** decide whether $d_P(\tilde c, c) > \varepsilon$.
-> - **Localization:** output $\mathrm{supp}(\tilde c - c)$.
-> - **Repair:** output $\hat c$ with $d_P^2(\hat c,c)\le\varepsilon$.
-
-| Task | Protected bits | Conditions |
-|---|---|---|
-| Bit-exact integrity | $O(1)$ — a hash | See caveat below |
-| Functional detection | $0$ | Given SB and $N$ as in Thm 6.1, with $\gamma \le \tfrac14\kappa\sqrt\varepsilon$ |
-| Localization | $0$ if $\mathcal A(D)$ small enough to identify $\hat S$; else $\Theta(s\log(h/s))$ | |
-| Repair to $\varepsilon$ | $0$ if $\mathcal A(D)\le\tfrac12\sqrt\varepsilon$; else Cor. 7.2 $\le L \le$ Thm 8.1 | |
-
-> **Caveat on the top row — important, do not omit.** A cryptographic hash detects *any* bit change, including entirely benign ones: different floating-point rounding on a new accelerator, deployment-time quantization, a legitimate fine-tune. It is brittle in exactly the way practitioners complain about, and it yields nothing toward localization or repair. **The $O(1)$ figure is for bit-exact integrity only. Functional detection — is $d_P(\tilde c,c)>\varepsilon$? — is a distinct and harder problem, and it is the one the detection literature actually addresses.** This document does not claim to improve on that literature; it observes that under the conditions of Theorem 6.1 the trusted probes deliver functional detection at zero stored cost, and that the interesting gap is between detection and repair, not between hashing and everything else.
-
-The separation worth stating is the last two rows: **detection can be free while repair is not.** Under Theorem 6.1's conditions the data tells you *that* something functionally significant happened, and even *where*, while the certificate is still required to recover *what the values were* — because localization is a discrete question the data answers, and amplitude is a continuous one it may not.
-
----
-
-## 10. Worked instance: the LM head
-
-Let $\sigma(x) \in \mathbb R^{d}$ be a transformer's final hidden state and $W \in \mathbb R^{V\times d}$ the unembedding matrix, so $z(x) = W\sigma(x)$ are the logits. Tampering is $\widetilde W = W + E$ with $\|E\|_0 \le s$.
-
-Per output coordinate $v$,
-$$\Delta z_v(x_i) \;=\; \langle E_v, \sigma(x_i)\rangle,$$
-so **the problem decouples into $V$ independent instances of §3, all sharing the same sensing matrix** $\Phi_D \in \mathbb R^{N\times d}$. Consequences:
-
-- A model with $V d$ mutable parameters is governed by **one $d\times d$ spectrum**. For Llama-3.1-8B: $V = 128{,}256$, $d = 4096$, $Vd \approx 5.25\times10^8$ parameters, one $4096\times4096$ object.
-- Rows with $\Delta z_v \equiv 0$ across all probes are unaffected, so **the probes localize the affected rows for free**; each affected row is then a small sparse-recovery problem in $\mathbb R^{4096}$.
-- Applying Theorem 8.1 to the flattened parameter vector with $h = Vd$: $\log_2 h \approx 29$, so for $s=14$ the ceiling is $L \le 2\cdot14\cdot29 \approx 812$ bits $\approx 102$ bytes, independent of $D$.
-- Applying Theorem 6.1 with $d = 4096$, $s = 14$: $N \gtrsim \tau^{-2}(2\cdot14\cdot\log_2(4096/28)) \approx \tau^{-2}\cdot 200$.
-
-The relevant empirical unknowns are $\kappa$, $\tau$, and the restricted spectrum of $\Phi_D$. Transformer final hidden states are known to be anisotropic and of low effective rank, so the spectrum decays sharply — which by Proposition 5.2 means a large invisible set at any fixed $\gamma$. Whether $\kappa$ is bounded away from zero on sparse supports is an empirical question and is the single most important measurement to make (§12).
-
-**Relevance of the threat model.** Bit-flip attacks on the LM head are documented: targeted attacks report $3$–$14$ flips on 8B–14B models, with accuracy on unrelated benchmarks preserved. That last property is precisely the statement that the attack lies close to $\mathcal N(D)$ for the evaluation sets used.
-
----
-
-## 11. Literature
-
-### 11.1 Classical antecedents — cite, claim nothing
-
-| | |
+| | becomes |
 |---|---|
-| Error correction as sparse recovery, $r=\Phi e$ | Candès & Tao, *Decoding by Linear Programming*, 2005 |
-| Zero-error source coding with decoder side information $=$ chromatic number | Witsenhausen, 1976; Alon & Orlitsky, 1996; Orlitsky & Roche, 2001 |
-| Syndrome coding with decoder side information | Slepian–Wolf; DISCUS (Pradhan–Ramchandran) |
-| Restoring a corrupted copy from a short fingerprint | Document exchange (Belazzougui; Haeupler); set reconciliation (Minsky–Trachtenberg–Zippel); IBLTs |
-| Sparse recovery with partially known support | Modified-CS (Vaswani–Lu) and successors |
-| Restricted eigenvalue / RIP, small-ball method | Bickel–Ritov–Tsybakov; Mendelson |
-| $\Omega(s\log(h/s))$ measurements necessary for RIP | Standard |
-| Perturbations in the Jacobian null space leave predictions unchanged | Folklore across the NTK / Fisher / loss-landscape literature |
+| zero bits (Thm 5.1) | $\chi = 1 \iff G_D$ has no edges $\iff \operatorname{diam}_{d_P}\mathcal N(D) \le 2\sqrt\varepsilon$ |
+| converse (§8) | $\chi \ge \omega$; a $d_P$-packing of $\mathcal N^-(D)$ is a clique |
+| ceiling (§9) | $\chi \le \Delta+1$; dropping the $\Phi_D$ constraint gives $\binom{h}{2s}(2\rho/\Delta)^{2s}$ |
 
-### 11.2 Behaviour determines the last layer
+> **Detection is governed by the radius of the invisible set. Repair is governed by its chromatic number.**
 
-**Carlini et al., *Stealing Part of a Production Language Model* (ICML 2024)** recover a production LLM's final layer from API logits by collecting logit vectors and taking an SVD, requiring $n > h$ queries ($\approx 8192$ for Llama-65B). *The Geometry of Last-Layer Model Stealing* (2026) analyses the same construction geometrically.
-
-This is the closest work to §3 and must be cited, but it solves a different problem. With no side information the only identifiable object is $\mathrm{col}(W)$, so recovery is **up to an unknown invertible gauge** — the attacker learns $W$ only modulo $O(h)$ — and the $n>h$ requirement is the cost of *spanning* that subspace from scratch. Here the received model $\tilde c$ is in hand: there is no subspace to span and no gauge to fix, and the unknown is an $s$-sparse residual. The two settings have different information structures and neither result implies the other. What Carlini et al. do supply is independent confirmation that $\Phi_D$ is the operative object and a published baseline for what behaviour alone costs.
-
-### 11.3 Attacks
-
-Progressive bit search (BFA, ICCV'19); T-BFA; TBT; ProFlip; DeepHammer (USENIX Sec'20); OneFlip (USENIX Sec'25, single-bit last-layer backdoor); and for transformers, AttentionBreaker, SilentStriker, and targeted LM-head flip attacks (2025–26). These establish that $s$ is genuinely small and that $\rho$ is bounded, and that attackers already optimize for invisibility on standard benchmarks.
-
-### 11.4 Detection
-
-Sensitive-Sample Fingerprinting (CVPR'19) — 2–8 probes, detection only, probes chosen by a first-order heuristic, no optimality theory. Model Equality Testing (ICLR'25) — MMD two-sample test for whether an API's model changed; detection only, no localization or repair, no sample-complexity theory. HASHTAG / AccHashtag, DeepDyve, VerIDeep, BitShield — hash- and signature-based integrity, detection only.
-
-### 11.5 Recovery systems
-
-RADAR; weight reconstruction (DAC'20); NeuroPots (USENIX Sec'23); Aegis; ObfusBFA; WeightSentry; NAPER; RangeGuard. For LLMs: LM-Fix (2025) uses fixed test vectors plus redundancy buffers costing **1.9–5% of model memory**; BitFlipScope (2025) localizes and recovers LLM bit flips. *Repair Brain Damage* (2026) imposes real-numbered linear constraints on weights and decodes with $\ell_1$. All are constructive and heuristic: none proves a lower bound, and none treats the trusted set as a measurement.
-
-**Terminology collision:** *Provable Repair of Deep Neural Networks* (PLDI'21, PLDI'23) means repairing a network to satisfy a specification. Different problem. Consider naming the object here a *repair budget* or *restoration sketch* rather than a "certificate", which also collides with certified robustness.
-
-### 11.6 What is left
-
-1. A converse for the sparse-plus-side-information problem. Neither the coding literature (no behavioural side channel) nor the stealing literature (no lower bound, no sparsity) supplies one.
-2. Identification of $\mathcal A(D)$ as the governing scalar, and its reading in terms of the restricted spectrum against label precision (§5, §7).
-3. The observation that the $\log(h/s)$ is the adaptive adversary's price, not proof slack (§6.3).
-4. The detect / localize / repair separation with its honest caveat (§9).
-5. Measurement of these quantities on real networks (§12).
+**Caveat, load-bearing.** A clique requires *pairwise* differences in $\mathcal N(D)$. Candidates on supports whose union exceeds $2s$ are **not** confusable, so the converse is a maximum over supports while the covering bound is a sum. A converse that sums over supports is wrong.
 
 ---
 
-## 12. What to measure
+## 8. Converse
 
-The theory is only worth as much as $\mathcal A(D)$, $\kappa$, $\tau$ and the restricted spectrum turn out to be on real models. Five experiments, none of which verifies a theorem inside its own construction.
+### 8.1 Per-support packing
 
-**E1 — the spectrum (essential).** For a real model, collect final hidden states over a large input corpus; measure the restricted singular spectrum of $\Phi_{D,S}$ over random and adversarially chosen supports; plot $\mathcal A(D)$ and $d^\star(D;\eta)$ against $N$, $s$, $\gamma$. Deliverable: **the number of trusted samples at which the repair budget hits zero**, and the residual budget below that.
+> ### Theorem 8.1
+> Fix a support $S$, $|S|\le s$, let $\sigma_1\ge\cdots\ge\sigma_{|S|}$ be the singular values of $\Phi_{D,S}$, and set $a_i = \min\{\rho,\ 2\gamma/\sigma_i\}$. Then
+> $$L_D^\star(\varepsilon) \;\ge\; \Big[\log_2 \operatorname{vol}\big(\Sigma_{SS}^{1/2}E_S\big) - |S|\log_2\big(2\sqrt\varepsilon\big) - \log_2 V_{|S|}\Big]_+ ,$$
+> where $E_S\subseteq\mathbb R^S$ is the ellipsoid with semi-axes $a_i$ and $V_k$ is the volume of the unit $k$-ball.
+>
+> *Proof.* $\|u\|_\infty\le\|u\|_2$ gives $E_S\subseteq\mathcal N^-(D)$. Every $v\in E_S$ yields a candidate $c+v\in\Theta_D$ reachable to the common $\tilde c=c$ via $e=-v$. A $2\sqrt\varepsilon$-separated subset of $E_S$ in $d_P$ is a clique in $G_D(2\sqrt\varepsilon)$, and its size is at least $\operatorname{vol}(\Sigma_{SS}^{1/2}E_S)/\operatorname{vol}(2\sqrt\varepsilon\,B_2^{|S|})$. Apply Theorem 7.2. $\square$
 
-**E2 — end-to-end repair against a real attack (essential).** Run a published bit-flip attack. Repair with (i) probes only, (ii) probes plus an $L$-bit certificate, $L \in \{0,16,32,64,128,256\}$. Plot recovered behaviour against $L$ for several $N$; overlay the converse of §7 and the ceiling of §8.
+The per-axis product form of earlier drafts, $\prod_i\max\{1,a_i\sqrt{\lambda_{\min}}/2\sqrt\varepsilon\}$, is not correct for a thin ellipsoid: axes below the resolution cannot be floored to $1$ independently. The volume ratio is the right statement.
 
-**E3 — the risked prediction.** Does sharper feature-spectrum decay imply a larger repair budget? Vary across model families and across public training checkpoints. Prediction: later, more converged checkpoints have faster spectral decay, larger $\mathcal A(D)$, and need more probes or more bits — i.e. *the better trained the model, the less its behaviour constrains its weights.* This is the one prediction that can fail. Report it either way.
+**Reading it.** You pay one protected bit for every factor of two by which a restricted singular direction is quieter than your label precision. Directions with $\sigma_i$ large contribute nothing; directions with $\sigma_i$ below the precision floor contribute their full dynamic range.
 
-**E4 — the practical bar.** Existing LLM recovery systems store 1.9–5% of model memory. Theorem 8.1 gives $\approx 10^2$ bytes for $s\approx14$. Demonstrate the gap end to end, and be scrupulous about what is paid instead: decode time, and invalidation under legitimate fine-tuning.
+### 8.2 A converse in the achievability's own quantities
 
-**E5 — the eval-invisible attack.** The maximizer of $\mathcal A(D)$ *is* an $s$-sparse edit that is invisible at your label precision on every trusted sample and maximally harmful under $P$. Construct it and show it survives a full benchmark suite while changing deployment behaviour. One figure; makes the abstraction concrete.
+Theorem 8.1 is per-support and says nothing about locating the tampering. The following does, and it is the one that matches §11.
+
+> ### Theorem 8.2
+> Suppose $D$ admits $m$ pairwise disjoint singleton dangerous supports $\{j_1\},\dots,\{j_m\}$ and values $v^{(1)}_i,\dots,v^{(n)}_i$ on coordinate $j_i$ with $|v^{(t)}_i|\le\rho/2$, such that
+> 1. every combination $\sum_i v^{(t_i)}_i$ lies in $\mathcal N(D)$ (automatic when the $\Phi_D$-columns of $j_1,\dots,j_m$ vanish), and
+> 2. any two combinations differing in at least one and at most $2s$ blocks are $d_P$-separated by more than $2\sqrt\varepsilon$.
+>
+> Then
+> $$L^\star_D(\varepsilon)\;\ge\;\log_2\Big[\textstyle\sum_{i\le s}\binom{m}{i}(n-1)^i\Big]\;\ge\; s\log_2(n-1) + s\log_2(m/s).$$
+>
+> *Proof.* The $n^m$ candidates $c+\sum_i v^{(t_i)}_i$ lie in $\Theta_D$ by (1). Two differing in $k\le 2s$ blocks differ by a $k$-sparse vector with entries at most $\rho$, hence in $\mathcal T_{2s,\rho}\subseteq\mathcal D_{s,\rho}$ (Lemma 2.1), and are $d_P$-separated by (2): they are adjacent in $G_D(2\sqrt\varepsilon)$. By Theorem 7.2 a certificate is a proper colouring, so each colour class is a code of length $m$ over an alphabet of size $n$ with minimum distance at least $2s+1$. The Hamming bound caps each class at $n^m/\sum_{i\le s}\binom{m}{i}(n-1)^i$. $\square$
+
+Hypothesis (1) is exactly the *silent* regime of §10 and holds verbatim for coordinates whose input mode the probes never visit — which §16 argues is the dominant case.
 
 ---
 
-## 13. Future work
+## 9. Achievability I: the data-free ceiling
 
-Explicitly out of scope here, in rough order of value.
+Assume $\Theta\subseteq[-B,B]^h$. Set $\Delta = 2\sqrt{\varepsilon/(s\lambda^{(s)}_{\max})}$ where $\lambda^{(s)}_{\max} = \max_{\|v\|_0\le s}v^\top\Sigma v/\|v\|_2^2$. Let $k_j(\theta)=\lfloor(\theta_j+B)/\Delta\rfloor$, $M=\lceil 2\rho/\Delta\rceil+3$, $y_j = k_j(c)\bmod M$, and store the $2s$ Reed–Solomon parity symbols of $y$ over $\mathbb F_Q$ with $Q\ge\max\{M,h\}$.
 
-### 13.1 Data-aware achievability
-§8 gives a ceiling that ignores $D$. The matching upper bound should shorten the code using $\mathrm{row}(\Phi_D)$, so that the rate degrades to $\approx d^\star(D;\eta)\log(\rho/\sqrt\varepsilon)$ when the trusted set is informative. Unlike the isolated-feature case, $\Phi_D$ is not coordinate-aligned, so "shortening" is not literal and a basis adapted to $\mathrm{row}(\Phi_D)$ plus a support-identification syndrome is needed. This is the main open problem.
+> ### Theorem 9.1 (data-free ceiling)
+> For every trusted set $D$, including the empty one,
+> $$L^\star_D(\varepsilon) \;\le\; 2s\Big\lceil \log_2 \max\big\{ \lceil 2\rho/\Delta\rceil+3,\ h \big\}\Big\rceil \;=\; O\!\left(s\log h + s\log\big(1+\rho\sqrt{s\lambda^{(s)}_{\max}/\varepsilon}\big)\right).$$
 
-### 13.2 Probe design, as a minimax
-This document uses i.i.d. probes, which is a deliberate simplification: it removes all design questions and makes $\Phi_D$'s law depend only on $P$. Allowing the defender to choose $x_1,\dots,x_N$ opens a genuinely different problem, and it must be posed correctly:
+The decoding is standard: unattacked coordinates are bit-identical so $d_H(\tilde y,y)\le s$; Berlekamp–Massey recovers $y$ and the error locator; the modulus $M>2\rho/\Delta+2$ lifts each residue uniquely.
 
-> **The right formulation is minimax, not optimization.** §2.2 grants the adversary full knowledge of the defense, so any designed probe set is public. The adversary then picks the $s$-sparse $e$ least visible on exactly those probes. The problem is
-> $$\max_{\{x_i\}} \ \min_{\|e\|_0\le s} \ \text{visibility}(e; \Phi_D),$$
-> not $\max_{\{x_i\}}$ of average or per-direction visibility. A design optimized for a fixed direction — which is what first-order "sensitive sample" heuristics produce — is silently defeated by an adaptive adversary. A *uniform*, RIP-style guarantee over all $2s$-sparse directions simultaneously leaves the adversary nowhere to hide and is the correct target.
+**This is not new and should not be presented as though it were.** Recovering an $s$-sparse difference from an $O(s\log h)$-bit sketch is set reconciliation / invertible Bloom lookup tables (Minsky–Trachtenberg–Zippel; Eppstein–Goodrich). The only novelty is the modulo-$M$ step that puts $\rho$ rather than $B$ in the rate. It is recorded because §11 must be compared against it.
 
-An additional constraint makes this genuinely new rather than a corollary of compressed sensing: **the rows of $\Phi_D$ cannot be designed freely.** Each row must be a realizable feature vector $\sigma(x)$, so the design set is the network's feature manifold, not $\mathbb R^h$. Characterizing the minimum $N$ in terms of how that manifold spreads over sparse directions is open, and would subsume and improve on existing probe-selection heuristics.
+**It is also brittle in exactly the way a hash is.** The decoder assumes unattacked coordinates are bit-exact. Under benign drift — a different accelerator, a re-quantization — coordinates near cell boundaries change symbol, $d_H(\tilde y,y)\gg s$, and decoding fails. Within the stated threat model this is legal; as a criticism of hash-based integrity it would be hypocritical. Dithered or nested-lattice quantization is the fix and is not written down here.
 
-### 13.3 Hidden-layer tampering
-This document covers output-layer parameters, where the model is exactly linear in the mutable parameters. Hidden-layer tampering — e.g. ReLU bias perturbation — requires a controlled linearization with a margin condition, and multi-layer propagation requires a product-of-Jacobians remainder. Deferred.
+---
 
-### 13.4 Other open items
-- **Randomized encoders.** §2.5 fixes deterministic maps. A private-coin version should be checked; the converse is expected to survive with constant-factor loss.
-- **Noisy rather than quantized labels.** $\gamma$ here is a hard precision bound. A stochastic-noise version needs stable recovery under RIP rather than exact syndrome decoding.
-- **Joint budget.** This document charges only $L$, on the grounds that trusted data is typically pre-existing — a public validation set, replicated and version-controlled, whose integrity is assured by other means. When it is not, storing $N$ labels at $\beta$ bits is itself a protected cost, and the honest question becomes *bits spent sketching behaviour versus bits spent sketching parameters*. Worth a section once §13.1 is settled.
-- **Estimating $\Sigma$.** All statements treat $\Sigma$ as known. In practice it is estimated from held-out data and $\mathcal A(D)$ is therefore itself an estimate.
-- **Computing $\mathcal A(D)$ exactly is NP-hard** (sparse generalized eigenvalue). Use convex relaxation or greedy support search; state the exact quantity as the information-theoretic object.
-- **Adaptive / multi-round adversaries**, and adversaries who tamper repeatedly between audits.
+## 10. What the data can and cannot remove
+
+Before constructing a data-aware code, it is worth knowing what shape the invisible set has, because the obvious construction fails for a specific reason.
+
+**The obstruction.** Reed–Solomon corrects a sparse error because sparsity and the code live in the same basis: coordinates are polynomial evaluations, and "few coordinates wrong" is what an MDS code sees. The trusted set contributes $\|\Phi_D v\|_\infty\le2\gamma$, which is **rotationally arbitrary**. Whitening it means applying $\Phi_{D,S}^{-1}$, and rotation destroys sparsity. "Shortening the code using $\operatorname{row}(\Phi_D)$" cannot work either: shortening deletes coordinates the decoder knows, and the decoder knows no *coordinate* of $e$ — only linear functionals of it, in general position with respect to the coordinate basis.
+
+**Rotated danger is real.** Take coordinates whose feature columns satisfy a linear relation $\Phi_{D,G}\lambda = 0$ exactly on every sampled input, broken only on a rare mode. Then $v=\lambda$ is perfectly invisible while $\lambda^\top\Sigma\lambda>0$, and every individual coordinate is loudly exercised, hence safe alone. Such traps exist, are minimal dangerous supports of size $\ge2$, and §16 exhibits them.
+
+**But they need every coordinate free.** Fix any one coordinate of such a group and the remaining slice is no longer in the kernel, so the data sees it. Measured on planted traps (§16): pinning any single coordinate collapses $\mathcal A$ from $0.377$ and $0.463$ to $\approx 0.026$, a factor of $15$–$18$, far below tolerance.
+
+> **A rotated invisible direction ceases to exist as soon as one of its coordinates is pinned. Orientation therefore never has to be represented — only broken, and breaking it is a combinatorial act in the coordinate basis.**
+
+That is the whole trick. The geometry is solved offline by the encoder, which knows $\Phi_D$, and hands the algebraic code two objects that live in the coordinate basis. Nothing rotates.
+
+---
+
+## 11. Achievability II: the data-aware code
+
+### 11.1 The three quantities
+
+All are functions of $D$ alone, computable before deployment.
+
+> ### Definition 11.1 (invisible width, fragility)
+> $$\alpha_j(D) \;=\; \sup\{\,|v_j| \;:\; v \in \mathcal N(D)\,\},
+> \qquad
+> \phi_j(D) \;=\; \frac{\alpha_j(D)\sqrt{\Sigma_{jj}}}{\sqrt\varepsilon}.$$
+
+$\phi_j$ is **how far weight $j$ can drift without your evaluations noticing, measured in units of how much you would care.** Both factors are essential: a coordinate that is wholly unconstrained but functionally irrelevant costs nothing, and a uniform quantizer step pays for it anyway.
+
+> ### Definition 11.2 (fragile coordinates)
+> Let $\mathcal F_\theta$ be the family of **minimal** supports of vectors in $\mathcal N(D)$ that are dangerous at level $\theta$. A set $J^\star$ is a **fragile set** if it is a hitting set for $\mathcal F_\theta$: $J^\star\cap S\ne\emptyset$ for every $S\in\mathcal F_\theta$.
+
+A hitting set, not a union. The decoder's obligation is that every residual $w\in\mathcal N(D)$ with $w|_{J^\star}=0$ is safe; since $\operatorname{supp}(w)\cap J^\star=\emptyset$, it suffices to **hit** each dangerous support. Two readings: an isolated fragile coordinate must be protected itself, but of a near-collinear cluster carrying a rotated dangerous direction, protecting **any one member** suffices (§10). Numerically the union gives $|J^\star|=h$ and the hitting set gives $|J^\star|=2$.
+
+### 11.2 The code
+
+Fix $\theta\in(0,1)$. Set
+
+$$\Delta_j \;=\; \frac{\theta\sqrt\varepsilon}{2s\,\sqrt{\Sigma_{jj}}},
+\qquad
+M_j \;=\; \Big\lceil \frac{\alpha_j}{\Delta_j}\Big\rceil + 3 \;=\; \Big\lceil \frac{2s\,\phi_j}{\theta}\Big\rceil+3,$$
+
+let $J^\star$ be a fragile set at level $(1-\theta)\sqrt\varepsilon$, and define the quantization slack
+
+$$\eta_\Delta \;=\; \max_{|T|\le 2s}\ \max_i\ \sum_{j\in T}\Delta_j\,|(\Phi_D)_{ij}| .$$
+
+All of $\alpha_j$, $\mathcal F_\theta$ and $J^\star$ are computed for $\mathcal N(D)$ taken at the inflated precision $2\gamma+\eta_\Delta$. There is no circularity: $\Delta_j$ depends only on $\varepsilon,s,\Sigma$.
+
+**Encoder** (knows $c$, $D$). $k_j(c)=\lfloor (c_j+B)/\Delta_j\rfloor$; $y_j = k_j(c)\bmod M_j$ for $j\in J^\star$; store
+$$\kappa \;=\; \mathrm{RS}_{2s}\big(y|_{J^\star}\big)\ \text{ over } \mathbb F_Q,\quad Q\ge\max\{|J^\star|,\ \max_j M_j\},$$
+or $y|_{J^\star}$ outright when that is shorter.
+
+**Decoder** (sees $D$, $\tilde c$, $\kappa$).
+1. Form $\tilde y_j = k_j(\tilde c)\bmod M_j$ for $j\in J^\star$ and Berlekamp–Massey against $\kappa$ to recover $y|_{J^\star}$.
+2. Return any $\hat c = \tilde c - \hat e$ with $\hat e\in\mathcal T_{s,\rho}$, $\hat c\in\Theta_D$, and $k_j(\hat c)\equiv y_j \pmod{M_j}$ for every $j\in J^\star$.
+
+> ### Theorem 11.3 (data-aware ceiling)
+> $$\boxed{\;L^\star_D(\varepsilon) \;\le\; \min\Big\{\ \sum_{j\in J^\star}\big\lceil\log_2 M_j\big\rceil,\ \ 2s\Big\lceil\log_2\max\big\{|J^\star|,\ \max_{j\in J^\star}M_j\big\}\Big\rceil\ \Big\}\;}$$
+> and the decoder's output satisfies $d_P(\hat c,c)\le\sqrt\varepsilon$. Encoder and decoder run in $\tilde O(h)$ plus one $s$-sparse recovery solve on $\Phi_D$.
+>
+> *Proof.* The truth $c=\tilde c-e$ satisfies every constraint in step 2, so the search is non-empty. Step 1 succeeds because unattacked coordinates are bit-identical, so $d_H(\tilde y,y)\le|\operatorname{supp}(e)\cap J^\star|\le s$ and $2s$ parity symbols correct $s$ symbol errors.
+>
+> Let $\hat c$ be any candidate and $w = c-\hat c = \hat e - e \in \mathcal D_{s,\rho}$. Both $c,\hat c\in\Theta_D$, so $\|\Phi_D w\|_\infty\le2\gamma$ and $w\in\mathcal N(D)$.
+>
+> Fix $j\in J^\star$. Then $k_j(c)\equiv k_j(\hat c) \pmod {M_j}$, while $|k_j(c)-k_j(\hat c)| \le |w_j|/\Delta_j + 1 \le \alpha_j/\Delta_j+1 < M_j$. An integer congruent to $0$ mod $M_j$ with absolute value below $M_j$ is $0$, so $k_j(c)=k_j(\hat c)$ and $|w_j|<\Delta_j$.
+>
+> Split $w = w'+w''$ with $w'=w|_{J^\star}$. Since $|\operatorname{supp}(w)|\le 2s$,
+> $$d_P(w') \;\le\; \sum_{j\in\operatorname{supp}(w')}|w'_j|\sqrt{\Sigma_{jj}} \;<\; 2s\cdot\Delta_j\sqrt{\Sigma_{jj}} \;=\; \theta\sqrt\varepsilon .$$
+> Also $w''$ is a restriction of $w$, hence in $\mathcal D_{s,\rho}$, and $\|\Phi_D w''\|_\infty \le \|\Phi_D w\|_\infty + \|\Phi_D w'\|_\infty \le 2\gamma+\eta_\Delta$, so $w''\in\mathcal N(D)$ at the inflated precision. Since $\operatorname{supp}(w'')\cap J^\star=\emptyset$ and $J^\star$ hits every minimal dangerous support at level $(1-\theta)\sqrt\varepsilon$, $w''$ is not dangerous: $d_P(w'')\le(1-\theta)\sqrt\varepsilon$. Hence $d_P(w)\le\theta\sqrt\varepsilon+(1-\theta)\sqrt\varepsilon=\sqrt\varepsilon$. $\square$
+
+**Extremes.** $J^\star=\emptyset$ gives $L=0$, recovering Theorem 5.1. $J^\star=[h]$ with $\alpha_j=2\rho$ recovers Theorem 9.1 up to the constant in $\Delta$. **Theorem 11.3 interpolates between them and is never worse than either.**
+
+**The role of $\theta$.** Larger $\theta$ coarsens the quantizer (smaller $M_j$) but tightens the danger threshold (larger $J^\star$). The split is a free parameter of the construction and should be optimized numerically; §16 reports both $\theta$ regimes and the cost of the tighter one.
+
+### 11.3 How tight is it?
+
+Write $m=|J^\star|$ and $\phi=\max_{j\in J^\star}\phi_j$. Theorem 11.3 gives $L \lesssim 2s\log_2\max\{m,\,2s\phi/\theta\}$, while Theorem 8.2 with $n\asymp\phi$ gives $L^\star\gtrsim s\log_2\phi + s\log_2(m/s)$. Converse and achievability are in **the same two quantities**: how many coordinates are fragile, and how fragile they are.
+
+> **DARC is within a factor $2$ of the sphere-packing bound whenever $\phi \gtrsim m$.** When $\phi < m$ the residual gap is exactly the classical alphabet-versus-length gap — Reed–Solomon needs $Q\ge$ the code length, and for small alphabets algebraic-geometry or BCH codes do better. That is a known coding-theoretic gap, not a defect of the reduction.
+
+---
+
+## 12. Computing the quantities
+
+$\mathcal A(D)$, $\alpha_j$ and the minimum hitting set are all NP-hard, so a construction requiring them exactly would be vacuous. It does not require them.
+
+> ### Proposition 12.1 (soundness of relaxation)
+> Theorem 11.3 remains valid if $\alpha_j$ is replaced by any upper bound, $\mathcal F_\theta$ by any family containing it, and $J^\star$ by any hitting set of that family. Each substitution can only lengthen the certificate; none can break correctness.
+
+So:
+
+- **$\alpha_j$ without support enumeration.** Relax $\|v\|_0\le2s$ to $\|v\|_1\le 4s\rho$ and solve one LP per coordinate — $h$ LPs, no enumeration. Measured against exhaustive enumeration over all $\binom{18}{\le4}$ supports: width ratio $1.00$–$1.46$, costing $0$–$2\%$ of certificate bits, at $80$–$190\times$ lower cost.
+- **Fragility screening.** For a support $S$, with $\|v\|_2 \le \min\{2\rho\sqrt{|S|},\ 2\gamma/\sqrt{\lambda_{\min}(\widehat\Sigma_{SS})}\}$,
+  $$\mathcal A_S \;\le\; \min\Big\{\sqrt{\lambda_{\max}(\Sigma_{SS})}\,\|v\|_2,\ \ \sqrt{4\gamma^2 + \|\Sigma_{SS}-\widehat\Sigma_{SS}\|_{\mathrm{op}}\|v\|_2^2}\Big\},$$
+  the second being Theorem 6.1. Both cost one small eigendecomposition and are sound; they are complementary, the second winning when $\widehat\Sigma\approx\Sigma$ and the first when $\lambda_{\min}(\widehat\Sigma_{SS})$ is large. Measured pruning: **45–80%** of supports discarded before any hard solve.
+- **Hitting set.** NP-hard, but greedy is a $\log$-approximation and any hitting set is sound.
+
+---
+
+## 13. The second currency, and its limit
+
+The certificate is *any* function of $(c,D)$, so it has a dialect beyond parity: **extra mantissa bits on trusted labels.** The encoder knows $f_c(x_i)$ exactly; since the decoder holds $y_i$ to $\pm\gamma$, transmitting which $2^{-b}$ sub-cell the true value occupies costs $b$ bits and replaces $\gamma$ by $\gamma/2^b$ on that row. Parity pins *coordinates* and is basis-locked; refinement tightens *halfspaces* at arbitrary orientation. Refinement only shrinks $\mathcal N(D)$, so dangerous supports leave and never enter, and the split can be optimized greedily.
+
+Call $v\in\mathcal N(D)$ **silent** if $\Phi_D v = 0$ and **audible** otherwise, and let $\mathcal N^0 = \mathcal N(D)\cap\ker\Phi_D$ be the **silent core**.
+
+> ### Theorem 13.1 (the two dialects)
+> 1. *(Refinement floor.)* No refinement of any subset of rows to any depth removes a single element of $\mathcal N^0$. If $\mathcal N^0$ contains a dangerous vector, parity bits are **mandatory**, and $L^\star_D(\varepsilon)$ is bounded below by Theorem 8.2 applied to the silent core.
+> 2. *(Refinement rate.)* For an audible dangerous direction $\hat v$ with $\|\hat v\|_\infty=1$, per-unit harm $p=\|\Sigma^{1/2}\hat v\|_2$ and audibility $z=\max_i|\langle\sigma(x_i),\hat v\rangle|$, refining the row attaining $z$ by $b = \lceil\log_2(2\gamma p/(z\sqrt\varepsilon))\rceil$ bits removes it. When label precision rather than the $\ell_\infty$ cap binds, this is exactly $b=\lceil\log_2(\mathcal A_S/\sqrt\varepsilon)\rceil$.
+> 3. *(Parity rate.)* Hitting the same support by parity costs $\lceil\log_2 M_j\rceil$ for the cheapest $j\in S$, **independent of audibility**.
+> 4. *(Crossover.)* Parity's cost is flat in audibility; refinement's grows as $\log_2(1/z)$ and diverges at $z=0$. Each dangerous direction therefore has a single crossover.
+>
+> *Proof of (1).* If $\Phi_D v=0$ then $|\langle\sigma(x_i),v\rangle| = 0 \le 2\gamma/2^b$ for every row and every depth. The constraint is satisfied vacuously. $\square$
+
+**The catch, and it is the point.** By Theorem 6.1, a direction is dangerous only insofar as $v^\top(\Sigma-\widehat\Sigma_D)v$ is large — only insofar as it acts on inputs the probes under-sample. In the limiting case, a mode never sampled, the direction is *exactly silent*, and refinement has nothing to sharpen. **Danger pushes audibility toward zero.** In §16 all three minimal dangerous supports are exactly silent and the hybrid degenerates to pure parity.
+
+> **Spending the certificate on behaviour buys resolution on directions the probes already see, and danger lives precisely where they do not.**
+
+Refinement adds precision to existing rows; it cannot add rows. A *new probe* that activates the missing mode does convert silent into audible, which is what the sample-size sweeps of §16 show. So the three resources are strictly ordered:
+
+| resource | acts on | clears the silent core? |
+|---|---|---|
+| sharper labels | existing rows | **no** |
+| more probes | the row space | **yes**, if they hit the mode |
+| parity bits | coordinates | **yes**, always, at cost per fragile coordinate |
+
+**Rows beat precision; and when the right row does not exist, only parity works.**
+
+---
+
+## 14. The ladder: detect, localize, repair
+
+> ### Definition 14.1
+> **Functional detection:** decide whether $d_P(\tilde c,c)>\varepsilon$. **Localization:** output $\operatorname{supp}(\tilde c-c)$. **Repair:** output $\hat c$ with $d_P^2(\hat c,c)\le\varepsilon$.
+
+| Task | Protected bits | Governed by |
+|---|---|---|
+| Bit-exact integrity | $O(1)$ — a hash | nothing; see caveat |
+| Functional detection | $0$ iff $\mathcal A(D)\le\sqrt\varepsilon$ | **radius** of $\mathcal N(D)$ |
+| Localization | $\log_2$ of the number of dangerous supports | **support structure** of $\mathcal N(D)$ |
+| Repair to $\varepsilon$ | Theorem 8.2 $\le L^\star \le$ Theorem 11.3 | **chromatic number** of $G_D$ |
+
+The three tasks are three functionals of one object, which is the content of §7.
+
+> **Caveat on the top row.** A cryptographic hash detects *any* bit change, including benign ones: different floating-point rounding on a new accelerator, deployment-time quantization, a legitimate fine-tune. It is brittle in exactly the way practitioners complain about, and yields nothing toward localization or repair. The $O(1)$ figure is for bit-exact integrity only. This document does not claim to improve on the functional-detection literature; it observes that when $\mathcal A(D)$ is small the trusted probes deliver detection at zero stored cost, and that the interesting gap is between detection and repair. Note also that §9's construction shares the hash's brittleness under drift.
+
+**The separation worth stating** is the last two rows: detection can be free while repair is not. The data tells you *that* something functionally significant happened, and often *where*; the certificate is still required to recover *what the values were*.
+
+---
+
+## 15. Worked instance: the LM head
+
+Let $\sigma(x)\in\mathbb R^{d}$ be a transformer's final hidden state and $W\in\mathbb R^{V\times d}$ the unembedding, so $z(x)=W\sigma(x)$. Tampering is $\widetilde W = W+E$, $\|E\|_0\le s$. Per output coordinate $v$, $\Delta z_v(x_i)=\langle E_v,\sigma(x_i)\rangle$, so **the problem decouples into $V$ instances of §3 sharing one sensing matrix** $\Phi_D\in\mathbb R^{N\times d}$. For Llama-3.1-8B: $V=128{,}256$, $d=4096$, $Vd\approx5.25\times10^8$ mutable parameters governed by one $4096\times4096$ object. Applying Theorem 9.1 with $h=Vd$ gives $\log_2 h\approx29$, so $s=14$ costs $L\le 2\cdot14\cdot29\approx812$ bits $\approx102$ bytes, independent of $D$; Theorem 11.3 can only improve on that.
+
+**Two caveats that matter more than the arithmetic.**
+
+The decoupling assumes you recorded the **full logit vector** at every probe. Nobody does. Under top-$k$ or argmax observation the measurements become non-linear and comparison-based, and rows of $W$ for tokens that never surface are unconstrained by any number of probes — $\alpha_j$ sits at its cap and Theorem 6.1's second term never shrinks. The regime treated here is the easy one.
+
+Bit-flip attacks on the LM head are documented, reporting $3$–$14$ flips on 8B–14B models with accuracy on unrelated benchmarks preserved. That last property is precisely the statement that the attack lies close to $\mathcal N(D)$ for the evaluation sets used.
+
+---
+
+## 16. Measurements
+
+All quantities below are computed on synthetic feature geometry with **exact** invisible sets, not estimated. The purpose is to validate the construction, not to characterize real networks; §17 lists what is missing.
+
+**Setting A ($s=1$, $h=44$).** 32 densely-exercised coordinates, 12 coordinates active only on a $\tau_j$-fraction of inputs ($\tau$ from $0.5$ to $1.2\times10^{-4}$), and 6 near-duplicate pairs. Invisible set computed by halfspace intersection over all $\binom{44}{2}$ supports.
+
+```
+     N    A(D)   |J*|         J*      Thm 11.3   Thm 9.1
+     4   1.273     36  [0,...,40]           12        12
+    16   0.636     28  [2,...,40]           10        12
+    32   0.300     16  [0,...,40]            8        12
+    64   0.300      2    [38, 39]            4        12
+   256   0.181      1        [39]            2        12
+  1024   0.141      0          []            0        12
+```
+
+Graceful degradation $12\to10\to8\to4\to2\to0$ against a ceiling pinned at $12$; $J^\star$ converges to exactly the coordinates whose input mode the probes have not visited.
+
+**Near-collinearity contributes almost nothing.** Forcing near-duplicate pairs at separation $\delta$ and measuring exactly, the gain in $\mathcal A$ from pairing over a single coordinate is $1.3\times$ at $\delta=0.2$ and $1.0\times$ at $\delta=0.002$. The $\ell_\infty$ cap binds first, and the direction it permits is functionally null — consistent with Theorem 6.1, since $\Sigma\approx\widehat\Sigma_D$ on well-sampled directions.
+
+**Setting B ($s=2$, $h=18$), with planted rotated traps.** Two groups constructed as in §10 — $\{13,14\}$ with $\lambda=(1,-1)$ and $\{15,16,17\}$ with $\lambda=(1,1,-1)$ — plus three isolated rare coordinates. All $4047$ supports of size $\le4$ enumerated.
+
+```
+     N   screened   minimal dangerous supports        J*           Thm 11.3   Thm 9.1
+    64   2231/4047  (11,), (13,14), (15,16,17)   [11,13,16]              11        20
+   256   1039/4047  none                         []                       0        20
+  1024    830/4047  none                         []                       0        20
+```
+
+The minimal dangerous supports recovered are **exactly** the three planted structures, and the greedy hitting set takes one coordinate from each. Pinning any single coordinate of a trap collapses $\mathcal A$ from $0.377$/$0.463$ to $\approx0.026$.
+
+**The two dialects.** On a trap family with tunable audibility $\delta$ ($N=64$, $\sqrt\varepsilon=0.1414$):
+
+```
+   delta   audibility   refine bits   parity bits   cheaper
+  0.0000     0.00e+00           inf             5   parity
+  0.0010     1.82e-03             6             5   parity
+  0.0030     7.22e-03             4             5   refine
+  0.0300     7.86e-02             1             5   refine
+```
+
+A single crossover at $\delta\approx2\times10^{-3}$, where $\log_2(1/\delta)$ meets the flat parity cost. On Setting B itself, all three minimal dangerous supports have audibility exactly $0$: refinement is impossible and the hybrid is pure parity.
+
+**End-to-end decoding.** Under adversarial evaluation — the attacker plays the $\mathcal A(D)$-maximizer and the decoder returns the *worst* candidate consistent with labels, sparsity and congruences — Theorem 11.3's guarantee holds with **zero violations** across all settings, at observed error $0.22$–$0.24\,\sqrt\varepsilon$ against the $\sqrt\varepsilon$ bound. The looser constant $\theta$ that yields $d_P\le3\sqrt\varepsilon$ produces the small certificates tabulated above; tightening to $d_P\le\sqrt\varepsilon$ roughly doubles $|J^\star|$ and adds about two bits per fragile coordinate. **The radius-versus-diameter slack of §5 is not free.**
+
+---
+
+## 17. Limitations
+
+Stated plainly, because several of these are more important than the results above.
+
+**The accounting is incomplete, and this is the central weakness.** Only $L$ is charged. The trusted set is treated as given, on the grounds that it is typically pre-existing. But every guarantee in §6 and §11 requires $D$ to be *tamper-proof*: if the adversary can touch $D$, they all evaporate. That is protected storage, and at the scale of §15 it is larger than the layer being protected. The honest object is a joint budget $N\beta + L$ — bits spent sketching behaviour versus bits spent sketching parameters — and §13 is only the first step toward it.
+
+**The observation model is the easy one.** §2.4 records a real number per probe at precision $\gamma$. The realistic regime is top-$k$ or generated text, where measurements are comparison-based and rarely-surfaced output rows are unconstrained by any $N$ (§15).
+
+**Other gaps.**
+- $\Sigma$ is treated as known; in practice it is estimated, so $\mathcal A(D)$, $\phi_j$ and $J^\star$ are themselves estimates.
+- Theorem 7.2 is a sandwich, not an equality; the factor-$4$ gap is not closed.
+- The chromatic number between $\omega$ and $\Delta+1$ is not located; Theorem 11.3 sits strictly inside.
+- §9 and §11 both assume unattacked coordinates are bit-exact and break under benign drift.
+- Randomized encoders are not considered; §2.6 fixes deterministic maps.
+- Hidden-layer tampering is out of scope: the model is exactly linear only in the output-layer parameters.
+- All measurements are on synthetic geometry. Nothing here has been measured on a real network, and §16's settings were built to exercise the construction, not sampled from nature.
+
+---
+
+## 18. Literature
+
+**Classical antecedents — cite, claim nothing.** Error correction as sparse recovery, $r=\Phi e$ (Candès–Tao 2005). Zero-error source coding with decoder side information as a chromatic number (Witsenhausen 1976; Alon–Orlitsky 1996; Orlitsky–Roche 2001) — the framework of §7. Syndrome coding with decoder side information (Slepian–Wolf; DISCUS). Restoring a corrupted copy from a short fingerprint: document exchange (Belazzougui; Haeupler), set reconciliation (Minsky–Trachtenberg–Zippel), IBLTs — **§9 is an instance of these**. Coding for memories with defects known to the encoder (Kuznetsov–Tsybakov) and for localized errors (Bassalygo–Gelfand–Pinsker) — the closest classical analogues to §2.6's information structure, in which the decoder's side information is the source itself passed through an adversarially chosen channel that has read the codebook. Restricted eigenvalue and small-ball methods (Bickel–Ritov–Tsybakov; Mendelson). Hamming and Singleton bounds; algebraic-geometry codes for the small-alphabet regime of §11.3. One-bit compressed sensing (Boufounos–Baraniuk; Plan–Vershynin) for the observation model §17 says is missing.
+
+**Behaviour determines the last layer.** Carlini et al., *Stealing Part of a Production Language Model* (ICML 2024), recover a production model's final layer from API logits by SVD, requiring $n>h$ queries. This is the closest work to §3 and solves a different problem: with no side information the identifiable object is $\operatorname{col}(W)$, so recovery is up to an unknown gauge, and the $n>h$ requirement is the cost of spanning that subspace from scratch. Here $\tilde c$ is in hand — no subspace to span, no gauge to fix — and the unknown is an $s$-sparse residual. Neither result implies the other; what they supply is independent confirmation that $\Phi_D$ is the operative object.
+
+**Attacks.** Progressive bit search (BFA, ICCV'19); T-BFA; TBT; ProFlip; DeepHammer (USENIX Sec'20); OneFlip (USENIX Sec'25); and for transformers AttentionBreaker, SilentStriker, and targeted LM-head flip attacks. These establish that $s$ is small, $\rho$ bounded, and that attackers already optimize for invisibility on standard benchmarks.
+
+**Detection.** Sensitive-Sample Fingerprinting (CVPR'19) — detection only, first-order heuristic probes, no optimality theory; §13 is a direct argument against its implicit premise. Model Equality Testing (ICLR'25). HASHTAG / AccHashtag, DeepDyve, VerIDeep, BitShield.
+
+**Recovery systems.** RADAR; weight reconstruction (DAC'20); NeuroPots (USENIX Sec'23); Aegis; ObfusBFA; WeightSentry; NAPER. For LLMs, LM-Fix uses fixed test vectors plus redundancy buffers costing 1.9–5% of model memory; BitFlipScope localizes and recovers LLM bit flips. All are constructive and heuristic: none proves a lower bound, and none treats the trusted set as a measurement. Note that the strong baseline is not these systems but *re-downloading the checkpoint*; the setting where a $10^2$-byte budget is decisive is one where protected storage is genuinely scarce — a TPM's NV region, on-chip fuses, a sealed enclave, an on-chain commitment.
+
+**Terminology.** *Provable Repair of Deep Neural Networks* (PLDI'21, PLDI'23) means repairing a network to satisfy a specification: a different problem. "Certificate" collides with certified robustness. **Repair budget** for the quantity and **restoration sketch** for the object are the names used here.
+
+---
+
+## 19. What is left
+
+1. **The joint budget.** Charge $N\beta+L$ and characterize the achievable region. §13 shows the two currencies are not interchangeable — one of them cannot buy the silent core at all — which makes the region's shape a real question rather than a rate comparison.
+2. **Coarse observations.** Top-$k$ and argmax, where $\gamma$ becomes a priced design variable rather than a constant.
+3. **Probe design as a minimax.** §13 reduces this to a concrete stake: every input mode the probe set misses becomes a silent core payable only in parity. The defender chooses $\{x_i\}$, the adversary then chooses the least visible $s$-sparse $e$, so the problem is $\max_{\{x_i\}}\min_{\|e\|_0\le s}\text{visibility}(e;\Phi_D)$ — not a maximization of average or per-direction visibility, which is what first-order heuristics produce and what an adaptive adversary defeats. The rows of $\Phi_D$ cannot be designed freely: each must be a realizable $\sigma(x)$, so the design set is the network's feature manifold, not $\mathbb R^h$. That constraint is what makes the problem more than a corollary of compressed sensing.
+4. **Measurement on real networks.** $\Sigma-\widehat\Sigma_D$ on sparse supports, $\phi_j$, and $|J^\star|$ for an actual LM head. Everything in §16 is synthetic.
+5. **Drift-robust quantization**, closing the gap §9 and §11 share with hashing.
+6. **Hidden-layer tampering**, which needs a controlled linearization with a margin condition.

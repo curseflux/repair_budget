@@ -19,7 +19,8 @@ import torch
 
 __all__ = [
     "bf16_table", "cell_bounds", "row_intervals", "count_candidates",
-    "verify_row", "estimate_row", "replay_discrepancy", "screen_rows", "screen_eta_sweep",
+    "verify_row", "estimate_row", "value_consistent",
+    "replay_discrepancy", "screen_rows", "screen_eta_sweep",
 ]
 
 
@@ -104,24 +105,42 @@ def count_candidates(z, lo, hi, feasible, values):
 
 # ---------------------------------------------------------------- exact / estimated counts
 
-def _codes_match(z, h, codes_row, j, cand, R, width, chunk):
-    """Boolean mask over `cand`: does putting cand[k] at column j reproduce every code?"""
+def _codes_match(z, h, codes_row, j, cand, R, width, chunk, eta=0.0):
+    """Boolean mask over `cand`: does putting cand[k] at column j reproduce every code?
+
+    A logit counts as consistent with its retained cell when it falls inside that cell
+    widened by `eta`. At eta = 0 this is exactly an equality test on the codes, since
+    Q(x) == q iff the cell edges bracket x.
+
+    `eta` must be the declared record tolerance whenever the cached codes were produced by
+    a different arithmetic path from `h @ z` -- a different batch shape is enough. Otherwise
+    FP32 replay noise rejects genuine candidates, the true original among them, at a rate of
+    about N * 5e-6 per row on the Llama head.
+    """
     cur = h @ z
     hj = h[:, j]
+    lo_e, hi_e = cell_bounds(codes_row, R, width)
     out = torch.zeros(len(cand), dtype=torch.bool, device=h.device)
     for s in range(0, len(cand), chunk):
         d = cand[s:s + chunk] - z[j]
         zlog = cur[None, :] + d[:, None] * hj[None, :]
-        inr = ((zlog >= -R) & (zlog < R)).all(1)          # saturation is not a legal record
-        if bool(inr.any()):
-            sub = torch.floor((zlog[inr] + R) / width).to(torch.uint8)
-            ok = torch.zeros(len(d), dtype=torch.bool, device=h.device)
-            ok[inr] = (sub == codes_row[None, :]).all(1)
-            out[s:s + chunk] = ok
+        out[s:s + chunk] = ((zlog >= lo_e[None, :] - eta)
+                            & (zlog < hi_e[None, :] + eta)).all(1)
     return out
 
 
-def verify_row(z, h, codes_row, left, right, counts, values, R, width, cap, chunk=4096):
+def value_consistent(z, h, codes_row, j, value, R, width, eta=0.0, chunk=4096):
+    """Does putting `value` at column j of this row reproduce the whole retained record?
+
+    A one-candidate `_codes_match`. Use it to check a specific weight -- for instance the
+    true original during evaluation -- without enumerating the column.
+    """
+    cand = torch.as_tensor([float(value)], device=h.device, dtype=h.dtype)
+    return bool(_codes_match(z, h, codes_row, int(j), cand, R, width, chunk, eta)[0])
+
+
+def verify_row(z, h, codes_row, left, right, counts, values, R, width, cap,
+               chunk=4096, eta=0.0):
     """Exact count: keep only labels that reproduce every retained code.
 
     Sound because the interval is an outer bound. Returns (total, per_column) or
@@ -132,12 +151,13 @@ def verify_row(z, h, codes_row, left, right, counts, values, R, width, cap, chun
     per_col = np.zeros_like(counts)
     for j in np.nonzero(counts > 0)[0]:
         cand = torch.as_tensor(values[left[j]:right[j]], device=h.device, dtype=h.dtype)
-        per_col[j] = int(_codes_match(z, h, codes_row, int(j), cand, R, width, chunk).sum())
+        per_col[j] = int(_codes_match(z, h, codes_row, int(j), cand, R, width,
+                                      chunk, eta).sum())
     return int(per_col.sum()), per_col
 
 
 def estimate_row(z, h, codes_row, left, right, counts, values, R, width,
-                 n_samples=2048, rng=None, conf=0.95, chunk=4096):
+                 n_samples=2048, rng=None, conf=0.95, chunk=4096, eta=0.0):
     """Unbiased estimate of the exact count when the interval set is too large to enumerate.
 
     Draws labels uniformly from the interval set (columns weighted by their share), verifies
@@ -161,7 +181,7 @@ def estimate_row(z, h, codes_row, left, right, counts, values, R, width,
         # uniform over the whole interval set, so hits/used estimates the surviving share.
         idx = left[j] + rng.integers(0, right[j] - left[j], size=k)
         cand = torch.as_tensor(values[idx], device=h.device, dtype=h.dtype)
-        hits += int(_codes_match(z, h, codes_row, j, cand, R, width, chunk).sum())
+        hits += int(_codes_match(z, h, codes_row, j, cand, R, width, chunk, eta).sum())
         used += k
     draws = used
     p = hits / draws

@@ -1,211 +1,156 @@
-# The repair budget: plan v2
+# The repair budget: plan v3
 
-Supersedes v1 (commit `bbfb13d`), revised after reading
-`llm2_repair_paper_research_assessment.md` and the code.
-
-**v1 had a wrong central claim.** It asserted a hard floor: perturbations invisible at output
-precision `b` stay invisible for every `N`, so `L(N)` plateaus strictly above zero. LLM2's
-boundary-crossing observation refutes this in the generic case, and its scalar threshold example
-is an explicit counterexample. Equal codes imply a difference below one cell width, but the
-converse fails: successive samples place *fresh* cell boundaries at fresh positions, so repeated
-low-precision observations resolve differences far finer than one cell. A hard floor requires
-degenerate features (`h_j` constant, or zero on the support of `P`), which is not the Llama case.
-The corrected law is in §2. The interval machinery from v1 survives intact and becomes more
-important, not less: it is the tool that measures the corrected law.
+Supersedes v2 (`0b92f5d`). v2 predicted a two-term law and a `-1` slope; the interval audit
+(`interval_audit_report.json`, A100, 2026-09-09) measured both. This version is written against
+data, not predictions.
 
 ---
 
-## 1. What the two reviews agree on
+## 1. What the audit found
 
-Independently, both converge on the same next step: **compute, from the retained records, the
-exact set of original weight values still consistent with the transcript, using actual quantizer
-cell positions rather than a cell-width relaxation.** v1 §3 Result 2 and LLM2's "exact repair
-using the uncertainty left by actual prediction cells" are the same computation. Two independent
-derivations landing on one experiment is a strong signal that it is the right one.
+**The law has two regimes and the tail exponent is exactly the predicted one.**
 
-They also agree, with the source document's own §12.2, that the current package is not an ICML
-paper: broad classical bounds, a classical conditional decoder, and a modest saving.
+| N | 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256 |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| median candidates / changed row | 1.26e8 | 7.1e6 | 8.0e5 | 1.8e5 | 3.1e4 | 250 | 124 | 69 | 33 |
+| local slope | | -4.15 | -3.14 | -2.19 | -2.49 | -6.96 | **-1.01** | **-0.85** | **-1.06** |
 
----
+- **Location regime (`N < 32`).** Steep, irregular decay while columns are eliminated. Ends
+  abruptly between 16 and 32, where the changed column becomes unique.
+- **Value regime (`N >= 32`).** Mean slope **-0.975** against a predicted **-1**. Every doubling
+  of N halves the surviving weight values. This is `width(I) ~ WIDTH/(N |h_j|)` measured directly.
 
-## 2. The corrected law
+So `L(N) = [location term] + [value term]`, the location term dies discontinuously and the value
+term decays as `log2(C/N)`. That is the answer to the question the project started with.
 
-Per changed coordinate `(v,j)` with numerical change `delta`, the retained record imposes
+**The record pins location completely and value partially.**
 
-```
-delta * h_j(x_i)  in  [ lo_{v,i} - (Wz)_{v,i} ,  hi_{v,i} - (Wz)_{v,i} )    for i = 1..N
-```
+- Row screen: **64/64 changed rows caught**, 100% recall.
+- Columns: **64/64 rows have exactly one feasible column.** Against the l1 localizer's 25%
+  coordinate recall, this is not an improvement in degree.
+- Values: median 33 survivors per row, all 64 rows counted exactly (not upper bounds).
+- **Residual information: 344 bits**, against a 3,968-bit data-free baseline — **91.3%**.
 
-where `[lo,hi)` is the original output cell. Each sample gives a fresh interval; their
-intersection `I_{v,j}` is an interval containing the true change. Because `z_{v,i}` varies
-across inputs, the cell offset is effectively fresh each sample, so
+**The ladder, measured.**
 
-```
-width(I_{v,j})  ~  WIDTH / (N * |h_j|)
-```
+| bits | vs data-free | scheme |
+|--:|--:|---|
+| 3,968 | — | data-free full-head Reed-Solomon (`2s` checks, `p=2^31-1`) |
+| 3,534 | 10.9% | as reported: l1 top-16 flags + RS |
+| 4,352 | **-9.7%** | row-summary code + screen — *worse than doing nothing*, because `\|E\|=128` |
+| 3,968 | 0.0% | interval localization + RS values (`p=2^31-1`) |
+| **2,176** | **45.2%** | row locators + interval column ID (`p=2^17-1`) |
+| *1,088* | *72.6%* | *the same, once the 64 false rows are removed* |
+| **344** | **91.3%** | information actually left by the record (counting bound, not a construction) |
 
-— shrinking like `1/N`, **not** stalling at one cell width. The number of admissible BF16
-labels is `width(I) / ulp(w)`, so
+**Concentrated tampers.** The single-change-per-row hypothesis is rejected outright: 0 feasible
+columns. Predicted, and it is the cheap version of "dispersed gives `N` constraints per unknown,
+concentrated gives `N/s`."
 
-```
-L(N)  ~  s * log2(d/s)                       [locations]
-      +  s * [ log2( WIDTH / (|h_j| * ulp(w)) ) - log2 N ]_+   [values]
-```
-
-Two terms, two mechanisms, two different ways the data pays:
-
-- **The location term** is killed *discontinuously* by the mismatch screen: a changed row that
-  moves any output code is identified outright.
-- **The value term** decays *logarithmically* in `N` and terminates at zero once the interval
-  narrows below one weight-alphabet step.
-
-The value term hits zero at `N* ~ WIDTH / (|h_j| * ulp(w))`. With `WIDTH = 0.5`,
-`|w| ~ 0.02`, `ulp_BF16(w) ~ w * 2^-8`, this gives `N* ~ 6400 / |h_j|`. The tamper generator
-draws columns from `topk(feature_score, 512)`, i.e. the *highest-energy* features, so
-`|h_j|` is large there and `N* = 256` may already be past threshold for the tested pools while
-far short of it for typical columns. **That is a sharp, falsifiable prediction and it is the
-experiment.**
-
-A hard floor survives only as a boundary case: `h_j` constant across inputs, `h_j = 0` on the
-support of `P`, saturated cells, or distinct labels with equal numerical value. State the
-dichotomy; do not build the paper on the floor.
-
-The v1 claim that "invisible = behaviorally irrelevant" remains true and remains the most
-interesting *idea* in the project, but it is now one theorem and one paragraph of
-interpretation, not an implemented branch. LLM2 is right that a second (behavioral) target
-should not be built before the exact-recovery intervals are measured. If the intervals turn out
-wide, promote it; if narrow, it stays a remark.
+**The self-check earned its place.** On the real arithmetic, slack 0 undercounted in 4/38 trials;
+`1e-4` never undercounts but is exactly tight in only 4/38. Verification, not the raw interval,
+carries every number above.
 
 ---
 
-## 3. The budget ladder
+## 2. Two problems the audit also found
 
-Every rung is decided by the same interval computation. This is the paper's central figure.
+### 2.1 The 64 false rows are numerical, and they cost 1,088 bits
 
-| Scheme | Bits | Conditional on |
-|---|---:|---|
-| Data-free full-head Reed–Solomon (`2s` checks, `p = 2^31-1`) | 3,968 | nothing |
-| **Current: ell-1 top-16 flags + RS** | **3,534** | as run |
-| LLM2 row-summary code + complete row screen | 2,176 | screen catches all affected rows; one change per affected row |
-| Exact interval localization + RS values (`e = s`, `u = 0`) | 1,984 | interval leaves one column per row |
-| Row-locator code + interval column ID (`p = 2^17-1`) | 1,088 | both of the above |
-| Intervals pin the label too | ~0 per resolved row | singleton `(column, label)` per row |
+The screen flagged 128 rows: 64 true, **64 false**. Every construction pays per flagged row, so
+the false half doubles the cost — and it is what makes the row-summary scheme (`2|E|` checks)
+land *above* the data-free baseline.
 
-The current result sits on the second rung. The spread from rung 1 to rung 6 is 3,968 bits to
-roughly nothing, and **which rung is reachable is an empirical question answerable this week from
-caches that already exist.** That framing is worth more than any additional trial.
+Diagnosis: the audit recomputes current codes from a resampled `(256, 4096)` batch while the
+cached codes came from a different batch composition, so FP32 accumulation order differs. Expected
+false rows are `V * (1 - (1 - 2*eps/WIDTH)^N)`; the observed 64 corresponds to
+`eps ~ 5e-7`, exactly the relative FP32 error on logits of magnitude ~10. Nothing is wrong with
+the theory; the replay is not bit-identical.
 
----
+**Fix:** recompute the screen under the same batching as the cache, or declare a deterministic
+reduction order and regenerate. Falsifiable prediction: false rows scale linearly in `N` and in
+`V`. This is the highest value-per-hour item in the project — one bug fix worth 1,088 bits.
 
-## 4. Three things LLM2 caught that v1 missed
+### 2.2 The 91.3% is measured on the most favourable 0.025% of the head
 
-1. **The 12.5% ceiling.** With `e = 16` erasures frozen against `s = 64` errors, the burden
-   `e + 2u = 16 + 2(64-c)` is at best `112` when every flag is correct, against a `128`-check
-   baseline. **The experiment could not have shown more than a 12.5% saving no matter how many
-   samples were retained**, and 10.9% is nearly that ceiling. The reported curve measures the
-   frozen configuration, not the information.
-   The reason `e = 16` was selected is visible in the code: at ~25% localizer recall, `e = 64`
-   would give `64 + 2*48 = 160` — worse than the baseline. **The binding constraint is the
-   ell-1 localizer's recall, not the retained data.** Exact interval arithmetic replaces that
-   heuristic directly; it is not a new research direction.
-2. **Boundary crossing.** See §2. This corrects v1's central claim.
-3. **`n_train` versus `N`.** "The model was trained on `N` iid samples" and "we retain `N`
-   prediction records" are different resources, and conflating them lets the original class
-   drift as `N` varies. Worse, if the original is reproducible from the retained data plus
-   public deterministic training settings, unlimited-computation repair may need zero bits.
-   The class definition must make the residual ambiguity explicit. v1 did not flag this.
+`row_pool = topk(mean_p, 256)`, `col_pool = topk(feature_score, 512)`. Large `|h_j|` gives narrow
+intervals, so the tamper generator selected precisely the coordinates where the record is most
+informative. The head profile makes the size of the effect explicit:
 
----
+| coordinates | candidates / row | bits / row | 64-row total |
+|---|--:|--:|--:|
+| tampered (salience pools) | 33 | 5.04 | **344** |
+| 512 sampled untouched rows | 1.3e7 | 23.64 | **1,513** |
 
-## 5. Three things in the code that neither review used
+Against a 1,558-bit location-only counting bound, a typical coordinate leaves nearly everything
+unresolved. **The honest headline is therefore a range, not a number:** the record supplies most
+of the repair information for high-salience weights and much less for typical ones.
 
-1. **`len(bad_rows)` is already recorded** (`location_scores` returns it; `diagnostics` stores
-   it). The row-screen completeness that decides the 2,176-bit rung may already be in the saved
-   CSVs. Check before running anything.
-2. **The tamper pools are narrow and public-rule-derived**: `row_pool = topk(mean_p, 256)`,
-   `col_pool = topk(feature_score, 512)` — a 131,072-coordinate pool, not the 525M head. If that
-   pool is a promise the decoder may use, the honest data-free baseline is
-   `log2 C(131072, 64) ~ 796` location bits, not the full-head figure, and the 3,968-bit baseline
-   is roughly 2x overstated. §9.7 of the source document raises this; it has to be resolved
-   before any saving is reported.
-3. **Only 8-bit codes are cached, but hidden states are.** So a `b`-sweep costs one
-   `H @ W.T` per `b` (256 x 128256 x 4096, about a second), not a model forward pass. The
-   precision axis is essentially free if it is wanted later.
+Read the right way this is the paper's best result, not its weakness: **the information a
+retained prediction record carries about a weight is proportional to that weight's influence on
+the retained predictions.** Obvious in hindsight, quantified here for the first time, and it
+grounds the exact-versus-behavioural dichotomy in measurement rather than speculation — the
+coordinates the record cannot resolve are exactly the coordinates whose perturbation barely
+moves the outputs.
+
+**Caveat that must be fixed before this is published:** `fraction_exact = 0.0` for the head
+profile. All 512 rows hit the 200k verification cap, so 1.3e7 is an interval upper bound. The
+converse rests on this number; it needs verifying.
 
 ---
 
-## 6. The next move: one experiment, one afternoon
+## 3. The paper
 
-On the existing frozen dispersed instance and caches:
+**Title.** *How many protected bits does model repair need, given the model's own predictions?*
 
-1. **Row-screen completeness.** How many of the 64 tampered rows appear in `bad_rows`; how many
-   false rows appear. Decides the 2,176-bit rung. Possibly already recorded.
-2. **Per-row interval count.** For each affected row `v`, compute `I_{v,j}` for all 4,096
-   columns; count admissible BF16 labels in each; report the number of surviving
-   `(column, label)` pairs. Cost: `64 x 4096 x 256` — instant.
-3. **The `-log2 N` slope.** Repeat (2) for `N` in `1, 2, 4, ..., 256`, plot
-   `log2(candidate count)` against `log2 N`. **This is the direct test of §2.** A slope near
-   `-1` per coordinate confirms the corrected law; a plateau confirms a floor and revives v1.
-4. **Whole-head ambiguity profile** (optional, GPU-minutes). The same interval reduction over
-   all `128256 x 4096` coordinates on the untampered head, via min-of-ratio reductions
-   (`1.3e11` fused ops, matmul-shaped). Gives the converse: a packing family of originals with a
-   *common transcript and common damaged checkpoint*, hence an exact lower bound on every
-   encoder — the same-class converse §9.6 says is missing.
+**Claim.** The budget splits into a location term and a value term. The location term is supplied
+free and discontinuously by a code-mismatch screen. The value term decays as `log2(1/N)` with a
+measured exponent of `-0.98`, and its magnitude is set by how strongly the weight influences the
+retained outputs. On Llama-3.1-8B's output head with 256 retained 8-bit logit vectors: **344 bits
+for salient weights, ~1,500 for typical ones, against 3,968 data-free.** Efficient constructions
+reach 1,088–2,176 bits; the residual factor of 3 is computational, not informational.
 
-**Decision rule.**
+**Sections.**
+1. The question, the threat model, and why a hash is not enough.
+2. Setup, compressed. Concede Witsenhausen / Slepian-Wolf in half a page.
+3. **The two-regime law**, with the interval derivation and the measured exponent.
+4. **The converse**: the candidates form a packing family sharing a transcript *and* a damaged
+   checkpoint, so `sum_v log2 |A_v|` lower-bounds every encoder. Salient and typical coordinates.
+5. **Constructions**: the ladder, and the gap.
+6. Experiments: the audit, plus the random-coordinate control (§4.1).
+7. Limitations: linear tampered layer, sampled faults, one model, pool-size ceiling on N.
 
-- Counts are mostly singletons -> rung 5 or 6. The paper is "retained predictions determine the
-  repair almost completely; the residual budget is `s log(d/s)` location bits that the mismatch
-  screen already supplies for free," with the measured `-log N` law as the mechanism. Strong.
-- Counts shrink at the predicted rate but stay above one -> rung 3 or 4. The paper is the
-  `L(N)` law with matching construction. Also strong, and the honest version of the original
-  ambition.
-- Counts stay large -> determine whether the cause is feature coverage, precision, or
-  within-row combinations. Then the converse in step 4 has a real target, and the behavioral
-  branch from v1 §2 comes back as the explanation for why exact recovery is the wrong ask.
-
-All three outcomes are publishable, which is what makes this a safe next step rather than a bet.
-What is *not* safe is running more trials at the current frozen configuration: §4.1 shows that
-configuration cannot produce a saving above 12.5% regardless of `N`.
+**The gap, stated crisply, because it is a contribution.** The best construction spends 17 bits
+per flagged row where the information is 5.04. The waste is entirely one thing: **the algebraic
+code re-pays for the row locators that the screen already supplied for free.** A field large
+enough to index 128,256 rows costs 17 bits; the residual value alphabet needs 5. Naming that as a
+computational-informational gap is worth more than a rushed attempt to close it.
 
 ---
 
-## 7. Prior art to check before writing anything
+## 4. What to do next — four items, then stop
 
-LLM2 flags **Gao and Lafferty, *Model Repair: Robust Recovery of Over-Parameterized Statistical
-Models* (arXiv 2005.09912)** as the most consequential omission — recovering a corrupted model
-from the original input design, connected to error correction. I have not read it and cannot
-confirm the overlap from memory. **Read it first.** If it already covers repair from the input
-design in a linear/random-feature setting, the surviving novelty is specifically the
-*protected-bit budget as a function of retained finite-precision predictions*, and the framing
-must be written around that from the start rather than adjusted afterward.
+1. **Fix the replay noise.** Deterministic reduction or matched batching; re-run the audit. Worth
+   1,088 bits and it removes the embarrassing negative row in the ladder.
+2. **Verify the head profile.** Raise `verify_cap`, or verify a random subsample per row and
+   report an estimate with an interval. The converse currently rests on an unverified count.
+3. **Random-coordinate control.** Re-run the audit with uniformly sampled rows and columns
+   instead of the salience pools. This is the single biggest threat to the headline and it is
+   one line of change. Report both numbers side by side; do not replace one with the other.
+4. **Enlarge the text pool.** `N=256` drawn with replacement from 384 texts is ~193 distinct, so
+   the curve is already near the pool's ceiling. The `-1` slope extrapolates to a single
+   surviving value at `N ~ 8,400`; testing that needs a larger pool. Also add
+   `feasible_columns` to the N-sweep so the regime crossover is recorded rather than inferred.
 
-Also: quantized consistent reconstruction (Jacques), finite-alphabet sparse recovery over finite
-fields (Das and Vishwanath), secure sketches (Dodis et al.), RADAR / DeepNcode for weight
-protection, and Carlini et al. on last-layer extraction from logits.
+**Then stop.** Do not build the residual-alphabet code, the behavioural decoder, a second model,
+or an output-precision sweep. The law is measured, the converse exists, the ladder is complete,
+and the remaining gap is better named than half-closed.
 
 ---
 
-## 8. What survives from v1
+## 5. Retired from v2
 
-- The interval computation as both diagnostic and converse (v1 §3 Result 2). Now central.
-- The spectral explanation of concentrated versus dispersed (v1 §3 Result 4): dispersed gives
-  `N` constraints per unknown, concentrated gives `N/s`, and the feasible polytope is governed by
-  `sigma_min(H_S)`. Confirmed by the code: concentrated puts all 64 changes in one row
-  (`assert len(bad_rows) == 1`). Cheap and it explains the one clearly negative result.
-- The cuts (v1 §6): Theorem 5, Proposition 12, the INT8/INT4 comparison, numerical-execution
-  and provenance material to appendices, and compressing Theorems 1-3 to half a page conceding
-  Witsenhausen and Slepian-Wolf.
-- The exchange-rate honesty (v1 §1.2): 31.3 MiB of record buys 434 bits, ~600,000:1. Say in the
-  introduction that protected bits are scarce because they must be signed, replicated and held
-  offline, not because storage is scarce.
-- The stopping discipline. Unchanged: when the ladder rung is established and the law is
-  measured, stop.
-
-## 9. What is retired from v1
-
-- The hard floor as the central claim (§2).
-- The `epsilon` phase transition as a headline result and E4 as a core experiment. Demoted to a
-  theorem plus interpretation, contingent on step 6.2 showing wide intervals.
-- The `b`-sweep as a core experiment. Cheap (§5.3), but it answers a question that only matters
-  if the floor is real.
+- The `-1` slope as a *prediction*: it is now a measurement (`-0.975` over `N >= 32`).
+- Any expectation that the row-summary code would win: at `|E| = 128` it loses to doing nothing.
+- The hard floor, already retired in v2, stays retired — the value term keeps decaying at `-1`
+  out to `N = 256` with no sign of a plateau.

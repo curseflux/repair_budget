@@ -1,0 +1,11 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Audit outputs and caches: regenerate with the notebooks, do not version.
+# The report JSONs are small and worth keeping, so they are re-included below.
+repair_runs/
+!repair_runs/**/*_report.json

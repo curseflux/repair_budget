@@ -1,0 +1,202 @@
+{
+  "A_row_screen": {
+    "n_bad_rows": 128,
+    "n_true_rows": 64,
+    "n_caught": 64,
+    "row_recall": 1.0,
+    "n_false_rows": 64,
+    "changed_output_cells": 6017,
+    "screen_complete": true
+  },
+  "S_slack_self_check": [
+    {
+      "slack": 0.0,
+      "trials": 38,
+      "undercounts": 4,
+      "exactly_tight": "32/38"
+    },
+    {
+      "slack": 1e-05,
+      "trials": 38,
+      "undercounts": 0,
+      "exactly_tight": "22/38"
+    },
+    {
+      "slack": 0.0001,
+      "trials": 38,
+      "undercounts": 0,
+      "exactly_tight": "4/38"
+    },
+    {
+      "slack": 0.001,
+      "trials": 38,
+      "undercounts": 0,
+      "exactly_tight": "0/38"
+    }
+  ],
+  "B_candidates": {
+    "rows_audited": 64,
+    "rows_counted_exactly": 64,
+    "rows_reported_as_upper_bound": 0,
+    "true_column_survives_all_rows": true,
+    "true_value_in_interval_all_rows": true,
+    "rows_with_column_pinned": 64,
+    "rows_fully_pinned": 1,
+    "median_feasible_columns": 1.0,
+    "median_candidates": 33.0,
+    "max_candidates": 30096,
+    "residual_bits_sum_log2": 344.2960070060684,
+    "residual_bits_is_upper_bound": false
+  },
+  "C_law": {
+    "median_candidates_by_N": {
+      "1": 125545273.0,
+      "2": 7094347.0,
+      "4": 802830.0,
+      "8": 175620.0,
+      "16": 31290.5,
+      "32": 250.5,
+      "64": 124.0,
+      "128": 69.0,
+      "256": 33.0
+    },
+    "fraction_exact_by_N": {
+      "1": 0.078125,
+      "2": 0.1875,
+      "4": 0.34375,
+      "8": 0.515625,
+      "16": 0.84375,
+      "32": 0.96875,
+      "64": 0.984375,
+      "128": 1.0,
+      "256": 1.0
+    },
+    "fitted_slope_log2count_vs_log2N": -2.553649312012464,
+    "fit_used_N": [
+      8,
+      16,
+      32,
+      64,
+      128,
+      256
+    ],
+    "predicted_slope": -1.0,
+    "N_at_which_median_reaches_1": null,
+    "caveat": "points where fraction_exact < 1 are interval upper bounds, not exact counts"
+  },
+  "D_ladder": [
+    {
+      "scheme": "data-free full-head Reed-Solomon (2s checks, p=2^31-1)",
+      "bits": 3968,
+      "condition_met": true,
+      "note": "",
+      "bytes": 496,
+      "vs_data_free": "0.0%"
+    },
+    {
+      "scheme": "as reported: l1 top-16 flags + RS (114 checks)",
+      "bits": 3534,
+      "condition_met": true,
+      "note": "",
+      "bytes": 442,
+      "vs_data_free": "10.9%"
+    },
+    {
+      "scheme": "row-summary code + row screen (2|E| checks, p=2^17-1)",
+      "bits": 4352,
+      "condition_met": true,
+      "note": "",
+      "bytes": 544,
+      "vs_data_free": "-9.7%"
+    },
+    {
+      "scheme": "interval localization + RS values (|E| checks, p=2^31-1)",
+      "bits": 3968,
+      "condition_met": true,
+      "note": "",
+      "bytes": 496,
+      "vs_data_free": "0.0%"
+    },
+    {
+      "scheme": "row locators + interval column ID (|E| checks, p=2^17-1)",
+      "bits": 2176,
+      "condition_met": true,
+      "note": "",
+      "bytes": 272,
+      "vs_data_free": "45.2%"
+    },
+    {
+      "scheme": "information still unresolved after the record (sum log2 candidates)",
+      "bits": 345,
+      "condition_met": true,
+      "note": "counting bound given the rows; not a construction",
+      "bytes": 44,
+      "vs_data_free": "91.3%"
+    }
+  ],
+  "D_location_bits": {
+    "full_head": 1557.9995252863696,
+    "public_pool": 791.982662584443,
+    "note": "if the pool is a promise the decoder may use, the honest data-free baseline uses the smaller figure"
+  },
+  "E_head_profile": {
+    "rows_sampled": 512,
+    "fraction_exact": 0.0,
+    "median_candidates": 13071032.0,
+    "p90_candidates": 23879825.800000012,
+    "median_log2": 23.639869715253486,
+    "note": "untouched rows: these candidates are alternative originals sharing this transcript and a common damaged checkpoint, so s times the median log2 lower-bounds any encoder for an s-sparse tamper on comparable rows"
+  },
+  "F_concentrated": {
+    "row": 38274,
+    "changes_in_row": 64,
+    "feasible_columns_under_one_change_model": 0,
+    "single_column_hypothesis_rejected": true,
+    "note": "dispersed gives N constraints per unknown; concentrated gives N/s, so the single-column explanation should be rejected outright here"
+  },
+  "config": {
+    "model_id": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "hf_cache_dir": "/scratch/bbjr/skarmakar/huggingface",
+    "model_revision": null,
+    "dataset_revision": null,
+    "cache_dir": "repair_runs/certificate_pilot",
+    "out_dir": "repair_runs/interval_audit",
+    "pilot_seed": 17,
+    "retained_sample_seed": 100017,
+    "tamper_trial_id": 1000,
+    "N": 256,
+    "sparsity": 64,
+    "output_bits": 8,
+    "fixed_logit_range": 64.0,
+    "rho_multiple": 10.0,
+    "tamper_fraction_of_bound": 0.9,
+    "constraint_slack": 0.0001,
+    "context_tokens": 256,
+    "feature_batch": 24,
+    "head_batch": 32,
+    "cal_contexts": 96,
+    "test_pool": 384,
+    "behavior_contexts": 128,
+    "n_grid": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32,
+      64,
+      128,
+      256
+    ],
+    "verify_cap": 200000,
+    "verify_chunk": 4096,
+    "head_profile_rows": 512,
+    "run_head_profile": true,
+    "run_concentrated_check": true
+  },
+  "provenance": {
+    "torch": "2.4.0+cu118",
+    "gpu": "NVIDIA A100-SXM4-40GB",
+    "timestamp": "2026-09-09T00:38:21"
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "source": "repair_runs/audit_v2",
+  "at_N": 2048,
+  "flagged_rows_assumed": 64,
+  "salient": {
+    "residual_bits_by_N": {
+      "1": 1495.1848549934036,
+      "2": 1394.7344413865478,
+      "4": 1237.8137020134964,
+      "8": 1060.247660545219,
+      "16": 837.3896659294496,
+      "32": 606.0084617347025,
+      "64": 486.5873685905477,
+      "128": 406.4913056804173,
+      "256": 342.88190057468194,
+      "512": 271.68179215892695,
+      "1024": 207.1776987662846,
+      "2048": 144.60319342055516
+    },
+    "residual_bits_at_N": 144.60319342055516,
+    "per_row_slope": {
+      "rows_fitted": 63,
+      "rows_skipped": 1,
+      "slope_mean": -1.025398821872641,
+      "slope_median": -0.8970861496581715,
+      "slope_std": 0.507456938288062,
+      "slope_p10": -1.8351129523713734,
+      "slope_p90": -0.5547658465037283,
+      "N_pinned_median": 32.0,
+      "predicted_slope": -1.0
+    },
+    "ladder": [
+      {
+        "scheme": "data-free full-head RS (2s checks)",
+        "bits": 3968,
+        "bytes": 496,
+        "vs_data_free": "0.0%"
+      },
+      {
+        "scheme": "row-summary code + screen (2|E| checks)",
+        "bits": 2176,
+        "bytes": 272,
+        "vs_data_free": "45.2%"
+      },
+      {
+        "scheme": "row locators + interval column ID (|E| checks)",
+        "bits": 1088,
+        "bytes": 136,
+        "vs_data_free": "72.6%"
+      },
+      {
+        "scheme": "information left by the record (counting bound)",
+        "bits": 145,
+        "bytes": 19,
+        "vs_data_free": "96.3%"
+      }
+    ]
+  },
+  "uniform": {
+    "residual_bits_by_N": {
+      "1": 1632.5610248296266,
+      "2": 1576.3532123914347,
+      "4": 1391.2724379523995,
+      "8": 1189.9057175958442,
+      "16": 973.9504999867531,
+      "32": 766.9943752129611,
+      "64": 563.2088250562686,
+      "128": 456.69258794261305,
+      "256": 376.6831516779008,
+      "512": 314.601649376228,
+      "1024": 227.00143621445147,
+      "2048": 168.11294601521925
+    },
+    "residual_bits_at_N": 168.11294601521925,
+    "per_row_slope": {
+      "rows_fitted": 63,
+      "rows_skipped": 1,
+      "slope_mean": -1.2213617790619442,
+      "slope_median": -1.0820764251505879,
+      "slope_std": 0.5644437344258667,
+      "slope_p10": -2.0444028788745623,
+      "slope_p90": -0.6825829035215576,
+      "N_pinned_median": 32.0,
+      "predicted_slope": -1.0
+    },
+    "ladder": [
+      {
+        "scheme": "data-free full-head RS (2s checks)",
+        "bits": 3968,
+        "bytes": 496,
+        "vs_data_free": "0.0%"
+      },
+      {
+        "scheme": "row-summary code + screen (2|E| checks)",
+        "bits": 2176,
+        "bytes": 272,
+        "vs_data_free": "45.2%"
+      },
+      {
+        "scheme": "row locators + interval column ID (|E| checks)",
+        "bits": 1088,
+        "bytes": 136,
+        "vs_data_free": "72.6%"
+      },
+      {
+        "scheme": "information left by the record (counting bound)",
+        "bits": 169,
+        "bytes": 22,
+        "vs_data_free": "95.7%"
+      }
+    ]
+  }
+}
